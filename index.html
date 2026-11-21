@@ -523,7 +523,16 @@
   // Install offer (web build): state lives up here so the overlay code can use it from the start
   const inst = { evt: null, shown: false, btn: null, el: null };
   let backLinkEl = null;                 // ‹ back to the site this game is listed on (web build only)
-  if (CONFIG.backLink && /^(\.{0,2}\/|https:\/\/)/.test(CONFIG.backLink.url)) {
+  // Only when the player came from that site: ?from=<site> on the link, or the site as the previous page (remembered for this visit)
+  function cameFromSite() {
+    try {
+      const base = new URL(CONFIG.backLink.url, location.href), dir = base.origin + base.pathname.replace(/[^/]*$/, '');
+      const yes = /[?&]from=/.test(location.search) || (document.referrer && document.referrer.startsWith(dir));
+      if (yes) sessionStorage.setItem('pong.fromSite', '1');
+      return yes || sessionStorage.getItem('pong.fromSite') === '1';
+    } catch (e) { return false; }
+  }
+  if (CONFIG.backLink && /^(\.{0,2}\/|https:\/\/)/.test(CONFIG.backLink.url) && cameFromSite()) {
     backLinkEl = document.createElement('a');
     backLinkEl.id = 'backLink'; backLinkEl.href = CONFIG.backLink.url; backLinkEl.textContent = '‹ ' + CONFIG.backLink.label;
     backLinkEl.className = 'hidden';
@@ -1923,7 +1932,7 @@
     } else if (mode === 'other-app') {
       how.textContent = t('To install, open this page in your browser (Safari on iPhone, Chrome on Android), then choose "Add to Home Screen" or "Install app".');
       btn(t('Copy link'), async () => {
-        const url = location.href.split('#')[0].replace(/[?&](app|install)=1/g, '');
+        const url = location.href.split('#')[0].replace(/[?&](app|install)=1|[?&]from=[\w-]+/g, '');
         try { await navigator.clipboard.writeText(url); toast(t('Link copied')); } catch (err) { toast(url); }
       });
     } else {
