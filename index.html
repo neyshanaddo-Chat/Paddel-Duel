@@ -64,7 +64,7 @@
   .modal { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center;
     padding: 12px; background: rgba(0,0,0,.25); }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px;
-    width: min(440px, 100%); max-height: 100%; overflow-y: auto; touch-action: pan-y;
+    width: min(440px, 100%); max-height: 100%; overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain;
     box-shadow: 0 20px 60px rgba(0,0,0,.6); user-select: none; }
   .panel h2 { font-size: 20px; letter-spacing: .1em; margin-bottom: 4px; }
   .panel h3 { font-size: 13px; color: var(--dim); letter-spacing: .12em; text-transform: uppercase; margin: 16px 0 8px; }
@@ -543,11 +543,17 @@
 
   const wrapEl = document.getElementById('wrap');
   const isTouch = () => window.matchMedia && matchMedia('(pointer: coarse)').matches;
+  // During a game the court keeps its size: when Android/Samsung bars or gesture hints slide in, they go over
+  // the top of the game instead of shrinking it. A real change (turning the phone) still resizes straight away.
+  var playingSize = false, sizeKey = '', bestW = 0, bestH = 0;
   function resize() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const cs = getComputedStyle(wrapEl);
-    const aw = wrapEl.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-    const ah = wrapEl.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    let aw = wrapEl.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    let ah = wrapEl.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const key = window.innerWidth > window.innerHeight ? 'L' : 'P';
+    if (playingSize && key === sizeKey) { aw = bestW = Math.max(bestW, aw); ah = bestH = Math.max(bestH, ah); }
+    else { sizeKey = key; bestW = aw; bestH = ah; }
     scale = Math.min(aw * 0.96 / W, ah * 0.96 / H);
     const rh = document.getElementById('rotateHint');
     if (rh) rh.classList.toggle('hidden', !(isTouch() && window.innerHeight > window.innerWidth));
@@ -556,6 +562,7 @@
     canvas.width = Math.round(W * scale * dpr);
     canvas.height = Math.round(H * scale * dpr);
     ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+    lastDraw = 0;                           // resizing clears the canvas: redraw at once
   }
   window.addEventListener('resize', resize);
   resize();
@@ -573,7 +580,7 @@
   let nCustomOn = false;                  // Custom points box showing
   const clampPoints = v => { v = Math.round(+v); return isFinite(v) ? Math.max(1, Math.min(100, v)) : 3; };
   let modal = null;                       // null | 'settings' | 'picker' | 'help' | 'online' | 'modes' | 'devLayer'
-  const devHooks = { overlay() {}, afterDraw() {}, escape() {}, frame() {} };   // filled in by the developer-mode block (dev copy only)
+  const devHooks = { overlay() {}, afterDraw() {}, escape() {}, frame() {}, busy: () => false };   // filled in by the developer-mode block (dev copy only)
   let serveTimer = 0, serveDir = Math.random() < 0.5 ? -1 : 1, winner = null, flash = 0;
   let waitingServe = false, serveReq = false;
 
@@ -802,6 +809,7 @@
   }
   function requestServe() { if (state === STATE.SERVE && waitingServe) serveReq = true; }
   function newGame() {
+    guardBack();
     p1.score = p2.score = 0;
     p1.y = p2.y = (H - PH()) / 2;
     winner = null; serveDir = Math.random() < 0.5 ? -1 : 1;
@@ -851,7 +859,7 @@
     updateSummary();
     if (!modal) overlay.classList.remove('hidden');
   }
-  function hideOverlay() { overlayKind = null; overlay.classList.add('hidden'); overlay.classList.remove('fade-in'); if (backLinkEl) backLinkEl.classList.add('hidden'); }
+  function hideOverlay() { if (state !== STATE.INTRO) guardBack(); overlayKind = null; overlay.classList.add('hidden'); overlay.classList.remove('fade-in'); if (backLinkEl) backLinkEl.classList.add('hidden'); }
 
   function showMenuAfterIntro() {
     if (introMenuShown) return;
@@ -930,7 +938,7 @@
 
   // ================= MODALS =================
   function openModal(id) {
-    modal = id;
+    modal = id; guardBack();
     document.body.classList.add('panel-open');
     overlay.classList.add('hidden');
     gearBtn.classList.add('hidden');
@@ -1193,6 +1201,7 @@
   }
 
   function onChange(path, val) {
+    lastDraw = 0;                           // show the change straight away
     setPath(path, val);
     if (path === 'match.n') nCustomOn = false;
     if (path.startsWith('visual.')) prefs.theme = 'custom';
@@ -1306,7 +1315,7 @@
   // home screen + game modes buttons
   // Phones in a browser: full screen + landscape when a game starts (needs the tap, so it's done from the Play buttons)
   function phoneFullscreen() {
-    if (!CONFIG.fullscreenOnPlay || !isTouch() || window.Capacitor || document.fullscreenElement) return;
+    if (!CONFIG.fullscreenOnPlay || !isTouch() || window.Capacitor || document.fullscreenElement || standalone()) return;   // the installed app is already full screen
     const el = document.documentElement;
     try {
       if (!el.requestFullscreen) return;
@@ -1497,7 +1506,10 @@
     if (k === 'r' && state !== STATE.MENU && !isGuest()) newGame();
   });
   window.addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
-  window.addEventListener('blur', () => { keys.clear(); pause(); });
+  window.addEventListener('blur', () => {
+    keys.clear();
+    setTimeout(() => { if (!document.hasFocus()) pause(); }, 300);   // pause only if focus really went elsewhere
+  });
   document.addEventListener('visibilitychange', () => { if (document.hidden) { keys.clear(); pause(); stopMusic(); } else updateMusic(); });
 
   function keyDir(p) {
@@ -1535,7 +1547,8 @@
 
   // ================= INPUT: TOUCH / POINTER =================
   const activePointers = new Map();
-  const toGameY = clientY => (clientY - canvas.getBoundingClientRect().top) / scale;
+  let touchTop = 0;                         // canvas position, measured once when a finger goes down (not on every move)
+  const toGameY = clientY => (clientY - touchTop) / scale;
   const pointerTarget = clientX => {
     if (singleControl()) return P(localKey());
     const r = canvas.getBoundingClientRect(); return (clientX - r.left) < r.width / 2 ? p1 : p2;
@@ -1546,6 +1559,7 @@
     if (!live()) return;                     // menus start/resume only from their buttons or Space, not a tap anywhere
     requestServe();
     if (e.pointerType === 'mouse') return;   // mouse users play with the keyboard
+    touchTop = canvas.getBoundingClientRect().top;
     const pl = pointerTarget(e.clientX);
     activePointers.set(e.pointerId, pl); pl.touchY = toGameY(e.clientY);
   });
@@ -1865,14 +1879,52 @@
     devHooks.afterDraw();
   }
 
+  // ================= BACK SWIPE / BACK BUTTON =================
+  // Android's back gesture (swipe in from the left or right edge) and back button would leave the game.
+  // Instead: close an open panel, or pause a game in progress. On the home screen, back leaves as normal.
+  let backGuard = false;
+  function guardBack() {
+    if (backGuard) return;
+    try { history.pushState({ pongGuard: 1 }, ''); backGuard = true; } catch (e) { /* not available */ }
+  }
+  function closeOpenPanel() {
+    if (modal === 'settings') closeSettings();
+    else if (modal === 'picker') closePicker(false);
+    else if (modal === 'help') closeHelp();
+    else if (modal === 'online') closeOnline(true);
+    else if (modal === 'modes') closeModes(false);
+    else if (modal === 'devLayer') devHooks.escape();
+    else if (modal === 'install') closeInstall();
+  }
+  window.addEventListener('popstate', () => {
+    if (!backGuard) return;
+    backGuard = false;
+    if (modal) closeOpenPanel();
+    else if (live()) { /* mid-game edge swipe: ignore it and keep playing */ }
+    else if (state === STATE.PAUSED || state === STATE.OVER) { /* stay put: Resume or ⌂ Home are on screen */ }
+    else { history.back(); return; }      // home screen: back leaves as usual
+    if (modal || state !== STATE.MENU) guardBack();
+  });
+
   // ================= LOOP =================
   let last = performance.now(), realDt = 0;
+  var lastDraw = 0;                       // var: resize() sets it before this line runs
+  // Home, pause and game-over screens barely change: redraw them less often to save phone battery
+  // (30 times a second while a settings panel is open for its live preview, 4 times a second otherwise).
+  const stillScreen = () => (state === STATE.MENU || state === STATE.PAUSED || state === STATE.OVER) && !devHooks.busy();
   function frame(now) {
     realDt = Math.min((now - last) / 1000, 0.25);
     const dt = Math.min(realDt, 1 / 30);
     last = now;
     pollPads();
-    update(dt); netTick(dt); draw(); devHooks.frame(now);
+    update(dt); netTick(dt);
+    if (!stillScreen() || now - lastDraw >= (modal ? 33 : 250) || flash > 0) { draw(); lastDraw = now; }
+    devHooks.frame(now);
+    if (live() !== playingSize) {
+      playingSize = live();
+      if (playingSize) { const cs = getComputedStyle(wrapEl); wrapEl.style.padding = [cs.paddingTop, cs.paddingRight, cs.paddingBottom, cs.paddingLeft].join(' '); }
+      else { wrapEl.style.padding = ''; resize(); }
+    }
     const showPause = live() && !modal;
     if (pauseBtn.classList.contains('hidden') === showPause) pauseBtn.classList.toggle('hidden', !showPause);
     requestAnimationFrame(frame);
@@ -1884,7 +1936,8 @@
   // Android Chrome: real Install button. iPhone: Safari can't be triggered, so show Share → Add to Home Screen.
   // Inside another web app's window (e.g. the site's own app): explain how to open it in the browser.
   const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  const standalone = () => (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  // installed app window (a browser tab made full screen by the game doesn't count)
+  const standalone = () => (window.matchMedia && matchMedia('(display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui)').matches && !document.fullscreenElement) || navigator.standalone === true;
   const installedGame = () => standalone() && /[?&]app=1/.test(location.search);   // the game's own manifest starts at ./?app=1
   function installable() { return CONFIG.installPrompt && (isTouch() || !!inst.evt) && !window.Capacitor && location.protocol.startsWith('http') && !installedGame(); }
   function installMode() { return standalone() ? 'other-app' : inst.evt ? 'prompt' : isIOS() ? 'ios' : 'menu'; }
