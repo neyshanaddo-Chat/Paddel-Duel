@@ -1,0 +1,1966 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f14">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<title>Paddle Duel</title>
+<style>
+  :root {
+    --bg: #0b0f14; --fg: #e8f0f7; --p1: #4fd1c5; --p2: #f6ad55; --dim: #7b8794;
+    --panel: #111821; --line: #2a3542; --accent: #4fd1c5;
+    --overlay-bg: rgba(11, 15, 20, 0.78);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--fg);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; overflow: hidden;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+    -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
+  #wrap { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  canvas#game { display: block; box-shadow: 0 0 0 2px #1c2530, 0 20px 60px rgba(0,0,0,.6); border-radius: 6px; }
+
+  /* ---------- menu overlay ---------- */
+  #overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 18px; text-align: center; pointer-events: none; padding: 20px;
+    background: var(--overlay-bg); }
+  .hidden { display: none !important; }
+  #overlay h1 { font-size: clamp(36px, 9vw, 88px); letter-spacing: .25em; padding-left: .25em; }
+  #overlay .sub { color: var(--dim); font-size: clamp(12px, 2.2vw, 16px); line-height: 1.8; }
+  #overlay .big { font-size: clamp(16px, 3vw, 24px); }
+  .p1 { color: var(--p1); } .p2 { color: var(--p2); }
+  .controls { display: flex; gap: 40px; justify-content: center; flex-wrap: wrap; }
+  kbd { border: 1px solid var(--dim); border-bottom-width: 3px; border-radius: 5px; padding: 1px 7px; margin: 0 2px; color: var(--fg); }
+  #opts { pointer-events: auto; display: flex; flex-direction: column; gap: 8px; align-items: center; }
+  .optRow { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+  .optRow button[data-n] { min-width: 46px; }
+  button { font: inherit; color: var(--fg); background: transparent; border: 1px solid var(--line);
+    border-radius: 6px; padding: 8px 14px; cursor: pointer; }
+  button:hover { border-color: var(--dim); }
+  button.on { border-color: var(--fg); background: #1c2530; }
+  button.primary { background: var(--accent); color: #061014; border-color: var(--accent); font-weight: bold; }
+  button:focus-visible, input:focus-visible, canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .blink { animation: blink 1.1s steps(2, start) infinite; }
+  @keyframes blink { to { visibility: hidden; } }
+  @media (prefers-reduced-motion: reduce) { .blink, #overlay.fade-in { animation: none; } }
+
+  #overlay.fade-in { animation: fadeIn .5s ease-out; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .rotateHint { color: var(--p2) !important; }
+  .fileRow { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .btnLike { display: inline-block; font-size: 14px; border: 1px solid var(--line); border-radius: 6px; padding: 8px 14px; cursor: pointer; }
+  .btnLike:hover { border-color: var(--dim); }
+  .btnLike:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #gearBtn { position: fixed; top: calc(12px + env(safe-area-inset-top)); right: calc(12px + env(safe-area-inset-right)); z-index: 5; font-size: 20px; line-height: 1;
+    padding: 8px 10px; background: rgba(17,24,33,.8); }
+
+  /* ---------- side panels (settings + first-run colour picker) ---------- */
+  .modal { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center;
+    padding: 12px; background: rgba(0,0,0,.25); }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px;
+    width: min(440px, 100%); max-height: 100%; overflow-y: auto; touch-action: pan-y;
+    box-shadow: 0 20px 60px rgba(0,0,0,.6); user-select: none; }
+  .panel h2 { font-size: 20px; letter-spacing: .1em; margin-bottom: 4px; }
+  .panel h3 { font-size: 13px; color: var(--dim); letter-spacing: .12em; text-transform: uppercase; margin: 16px 0 8px; }
+  .panel .sub { color: var(--dim); font-size: 13px; line-height: 1.5; margin-bottom: 10px; }
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 4px; }
+  .tabs button { padding: 6px 10px; font-size: 13px; }
+  .row { display: flex; gap: 10px; justify-content: space-between; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+  .field { display: grid; grid-template-columns: 1fr 1.4fr 56px; align-items: center; gap: 10px; margin: 8px 0; font-size: 14px; }
+  .field output { text-align: right; color: var(--dim); font-size: 13px; }
+  .field.seg { grid-template-columns: 1fr 2fr; }
+  .segs { display: flex; gap: 4px; flex-wrap: wrap; }
+  .segs button { padding: 4px 9px; font-size: 13px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chips button { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; font-size: 13px; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(255,255,255,.4); display: inline-block; }
+  .themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; }
+  .themes button { text-align: left; font-size: 13px; padding: 6px 8px; }
+  .themes .sw { display: flex; gap: 3px; margin-top: 4px; }
+  .themes .sw i { width: 14px; height: 10px; border-radius: 2px; display: block; }
+  .warn { font-size: 12px; color: #fbd38d; line-height: 1.5; margin-top: 8px; }
+
+  .colourEditor { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .colourEditor .edLabel { font-weight: bold; letter-spacing: .08em; }
+  .colourEditor canvas.wheel { touch-action: none; cursor: crosshair; border-radius: 50%; }
+  .colourEditor .slider { display: grid; grid-template-columns: auto 1fr 40px; gap: 8px; align-items: center; width: 100%; font-size: 12px; color: var(--dim); }
+  .colourEditor output { text-align: right; }
+  .hexRow { display: flex; gap: 8px; align-items: center; }
+  .hexRow .chip { width: 26px; height: 26px; border-radius: 6px; border: 1px solid rgba(255,255,255,.3); }
+  .hexRow input { font: inherit; font-size: 13px; width: 88px; background: #0b0f14; color: var(--fg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; user-select: text; }
+  .pickerWheels { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+
+  /* phones and tablets: no keyboard hints */
+  @media (pointer: coarse) { .kbdHint { display: none !important; } }
+  /* short screens (phones held sideways): compact menu */
+  @media (max-height: 520px) {
+    #overlay { gap: 8px; padding: 8px; overflow-y: auto; }
+    #overlay h1 { font-size: clamp(28px, 13vh, 60px); }
+    #overlay .big { font-size: 16px; }
+    #overlay .sub { font-size: 12px; line-height: 1.5; }
+    #opts { gap: 6px; } #opts button { padding: 5px 10px; font-size: 14px; }
+    .optRow button[data-n] { min-width: 40px; }
+    .panel { padding: 12px; width: min(700px, 100%); }
+    .colourEditor canvas.wheel { width: 130px !important; height: 130px !important; }
+  }
+  @media (max-width: 720px) {
+    body.panel-open #wrap { align-items: flex-start; padding-top: 8px; }
+    .modal { align-items: flex-end; justify-content: center; padding: 8px; }
+    .panel { max-height: 64vh; width: 100%; }
+  }
+  /* ---------- v0.5 additions ---------- */
+  #pauseBtn { position: fixed; top: calc(12px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 5;
+    font-size: 18px; line-height: 1; padding: 8px 16px; background: rgba(17,24,33,.8); }
+  .optRow .sep { width: 12px; }
+  #toast { position: fixed; bottom: calc(56px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); z-index: 30;
+    background: #1c2530; border: 1px solid var(--accent); color: var(--fg); padding: 8px 14px; border-radius: 8px;
+    font-size: 14px; pointer-events: none; opacity: 0; transition: opacity .3s; white-space: nowrap; }
+  #toast.show { opacity: 1; }
+  .howto { font-size: 13px; color: var(--dim); line-height: 1.6; margin: 0 0 10px 0; padding-left: 18px; }
+  .stats table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .stats td { padding: 4px 6px; border-bottom: 1px solid var(--line); }
+  .ach { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 6px; }
+  .ach div { border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 12px; color: var(--dim); line-height: 1.4; }
+  .ach div.got { color: var(--fg); border-color: var(--accent); }
+  .field.txt { grid-template-columns: 1fr 1.6fr; }
+  .field input[type=text], #serverUrl { font: inherit; font-size: 14px; background: #0b0f14; color: var(--fg); border: 1px solid var(--line);
+    border-radius: 6px; padding: 5px 8px; width: 100%; user-select: text; -webkit-user-select: text; }
+  .field input.upper { text-transform: uppercase; }
+  .bigcode { font-size: 44px; letter-spacing: .3em; text-align: center; margin: 6px 0 10px; color: var(--accent); padding-left: .3em; }
+  #joinCode { font: inherit; text-transform: uppercase; letter-spacing: .3em; font-size: 22px; width: 150px; text-align: center;
+    background: #0b0f14; color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 6px; user-select: text; -webkit-user-select: text; }
+  details { margin-top: 12px; } details summary { cursor: pointer; color: var(--dim); font-size: 13px; }
+  /* v0.6: decluttered menu */
+  #helpBtn { position: fixed; top: calc(12px + env(safe-area-inset-top)); right: calc(62px + env(safe-area-inset-right)); z-index: 5;
+    font-size: 18px; line-height: 1; padding: 8px 12px; background: rgba(17,24,33,.8); pointer-events: auto; font-weight: bold; }
+  #nCustom { font: inherit; font-size: 16px; width: 76px; text-align: center; background: #0b0f14; color: var(--fg);
+    border: 1px solid var(--fg); border-radius: 6px; padding: 5px 6px; user-select: text; -webkit-user-select: text; }
+  #opts .modeRow button { padding: 10px 16px; }
+  /* v0.7: home screen + game modes section */
+  #menuBtns { pointer-events: auto; display: flex; flex-direction: column; gap: 10px; align-items: stretch; min-width: min(260px, 80vw); }
+  #menuBtns button { font-size: 18px; padding: 11px 22px; }
+  #playBtn { font-size: 22px !important; letter-spacing: .08em; }
+  #homeBtn.armed { border-color: #ff6b6b; color: #ff6b6b; }
+  #modeSummary { min-height: 1em; }
+  #overlay #prompt { font-size: 15px; color: var(--dim); }
+  #modes #opts { align-items: stretch; gap: 6px; margin: 4px 0 8px; }
+  #modes h3 { margin: 8px 0 2px; font-size: 13px; color: var(--dim); text-transform: uppercase; letter-spacing: .08em; text-align: center; }
+  @media (max-height: 520px) { #menuBtns { gap: 6px; } #menuBtns button { font-size: 15px; padding: 7px 16px; } #playBtn { font-size: 18px !important; } }
+  #opts .small button { padding: 6px 12px; font-size: 14px; }
+  #installBtn { font-size: 15px !important; padding: 8px 16px !important; border-style: dashed; }
+  .installNever { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 14px; color: var(--dim); cursor: pointer; }
+  .installNever input { width: 18px; height: 18px; accent-color: var(--accent); }
+  #backLink { position: fixed; top: calc(12px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left)); z-index: 5;
+    font-size: 15px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: rgba(17,24,33,.8);
+    color: var(--fg); text-decoration: none; }
+  @media (max-height: 520px) { #pauseBtn { padding: 6px 12px; font-size: 15px; } .bigcode { font-size: 32px; } }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game" aria-label="Two player Pong game" role="img"></canvas>
+  <button id="gearBtn" aria-label="Settings" title="Settings (Esc)">⚙</button>
+  <button id="pauseBtn" class="hidden" aria-label="Pause" title="Pause (Space)">❚❚</button>
+
+  <div id="overlay">
+    <h1 id="title">PADDLE DUEL</h1>
+    <div class="sub rotateHint hidden" id="rotateHint" data-i18n>↻ Turn your phone sideways for a bigger court</div>
+    <div id="menuBtns">
+      <button id="playBtn" class="primary">▶ Play</button>
+      <button id="modesBtn" data-i18n>Game modes</button>
+      <button id="homeBtn">⌂ Home</button>
+    </div>
+    <div class="sub" id="modeSummary"></div>
+    <div class="big blink" id="prompt">Press SPACE to start</div>
+    <button id="helpBtn" aria-label="How to play" title="How to play">?</button>
+  </div>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<!-- First-run colour picker (with a short how-to-play) -->
+<div id="picker" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="pickerTitle">
+  <div class="panel">
+    <h2 id="pickerTitle" data-i18n>Choose a colour</h2>
+    <ul class="howto" id="pickerHowto"></ul>
+    <p class="sub" data-i18n>Drag on a wheel to choose a colour for each player. You can change it later in ⚙ Settings.</p>
+    <div class="pickerWheels" id="pickerWheels"></div>
+    <div class="warn" id="pickerWarn"></div>
+    <div class="row">
+      <button id="pickerSkip" data-i18n>Use defaults</button>
+      <button id="pickerStart" class="primary" data-i18n>Start game ▶</button>
+    </div>
+  </div>
+</div>
+
+<!-- Game modes -->
+<div id="modes" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modesTitle">
+  <div class="panel">
+    <h2 id="modesTitle" data-i18n>Game modes</h2>
+    <div id="opts">
+        <h3 data-i18n>Players</h3>
+        <div class="optRow modeRow" role="group" aria-label="Mode">
+          <button data-mode-play="local" data-i18n>2 Player</button><button data-mode-play="cpu" data-i18n>vs Computer</button><button data-mode-play="online" data-i18n>Online</button>
+        </div>
+        <div id="cpuSec" class="hidden"><h3 data-i18n>Computer difficulty</h3>
+        <div class="optRow small" id="cpuRow" role="group" aria-label="Computer difficulty">
+          <button data-cpu="easy" data-i18n>Easy</button><button data-cpu="normal" data-i18n>Normal</button><button data-cpu="hard" data-i18n>Hard</button><button data-cpu="hardcore" data-i18n>Hardcore</button>
+        </div></div>
+        <div id="matchSec"><h3 data-i18n>Match</h3>
+        <div class="optRow small" id="matchRow" role="group" aria-label="Match format">
+          <button data-mode="first" data-i18n>First to</button><button data-mode="best" data-i18n>Best of</button>
+        </div>
+        <h3 data-i18n>Points to win</h3>
+        <div class="optRow small" id="pointsRow" role="group" aria-label="Points to win">
+          <button data-n="3">3</button><button data-n="5">5</button><button data-n="10">10</button><button id="nCustomBtn" data-i18n>Custom</button>
+          <input id="nCustom" class="hidden" type="number" inputmode="numeric" min="1" max="100" step="1" aria-label="Points (1 to 100)">
+        </div></div>
+        <div class="optRow small"><button id="leaveBtn" class="hidden" data-i18n>Leave online game</button></div>
+      </div>
+    <div class="row"><button id="modesDone" data-i18n>Done</button><button id="modesPlay" class="primary">▶ Play</button></div>
+  </div>
+</div>
+
+<!-- How to play -->
+<div id="help" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+  <div class="panel">
+    <h2 id="helpTitle" data-i18n>How to play</h2>
+    <div id="helpBody"></div>
+    <div class="row"><span></span><button id="helpOk" class="primary" data-i18n>Got it</button></div>
+  </div>
+</div>
+
+<!-- Online -->
+<div id="online" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="onlineTitle">
+  <div class="panel">
+    <h2 id="onlineTitle" data-i18n>Online game</h2>
+    <p class="sub" data-i18n>Play a friend on another device. One of you hosts and shares the code, the other joins with it.</p>
+    <div id="onStart">
+      <button id="hostBtn" class="primary" data-i18n>Host a game</button>
+      <h3 data-i18n>Join a game</h3>
+      <div class="fileRow"><input id="joinCode" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Room code" placeholder="ABCD"><button id="joinBtn" data-i18n>Join</button></div>
+    </div>
+    <div id="onWait" class="hidden">
+      <p class="sub" data-i18n>Share this code with your friend:</p>
+      <div class="bigcode" id="roomCode">----</div>
+      <p class="sub" data-i18n>Waiting for them to join…</p>
+    </div>
+    <p class="sub" id="onStatus" role="status"></p>
+    <details><summary data-i18n>Server</summary>
+      <div class="field txt"><label for="serverUrl" data-i18n>Server address</label><input id="serverUrl" type="text" spellcheck="false" autocomplete="off" placeholder="wss://"></div>
+    </details>
+    <div class="row"><span></span><button id="onlineClose" data-i18n>Cancel</button></div>
+  </div>
+</div>
+
+<!-- Settings -->
+<div id="settings" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+  <div class="panel">
+    <h2 id="settingsTitle" data-i18n>Settings</h2>
+    <div class="tabs" role="tablist">
+      <button data-tab="sound" class="on" role="tab" data-i18n>Sound</button>
+      <button data-tab="colours" role="tab" data-i18n>Colours</button>
+      <button data-tab="display" role="tab" data-i18n>Display</button>
+      <button data-tab="gameplay" role="tab" data-i18n>Gameplay</button>
+      <button data-tab="players" role="tab" data-i18n>Players</button>
+      <button data-tab="stats" role="tab" data-i18n>Stats</button>
+    </div>
+
+    <section data-section="sound" data-controls="sound"></section>
+
+    <section data-section="colours" class="hidden">
+      <h3 data-i18n>Theme</h3>
+      <div class="themes" id="themeList"></div>
+      <h3 data-i18n>Colour of…</h3>
+      <div class="chips" id="colourTargets"></div>
+      <div style="margin-top:14px" id="settingsWheel"></div>
+      <div class="warn" id="contrastWarn"></div>
+      <h3 data-i18n>Background image</h3>
+      <p class="sub" data-i18n>Use your own picture behind the court. It's stored only on this device, so it works offline.</p>
+      <div class="fileRow">
+        <label class="btnLike">🖼 <span data-i18n>Choose image…</span><input type="file" id="bgFile" accept="image/*" style="position:absolute;opacity:0;width:1px;height:1px"></label>
+        <button id="bgRemove" class="hidden" data-i18n>Remove image</button>
+      </div>
+      <div data-controls="bgimage"></div>
+      <p class="sub" id="bgNote" role="status"></p>
+    </section>
+
+    <section data-section="display" data-controls="display" class="hidden"></section>
+    <section data-section="gameplay" data-controls="gameplay" class="hidden"></section>
+    <section data-section="players" data-controls="players" class="hidden"></section>
+    <section data-section="stats" class="hidden stats">
+      <div id="statsBody"></div>
+      <div class="row"><button id="clearStats" data-i18n>Clear stats</button><span></span></div>
+    </section>
+
+    <div class="row">
+      <button id="resetBtn" data-i18n>Reset all to defaults</button>
+      <button id="closeSettings" class="primary" data-i18n>Done</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ================= CONFIG (the skill customises these) =================
+  const CONFIG = {
+    title: 'PADDLE DUEL',                     // shown on the menu, intro and browser tab
+    width: 960, height: 600,           // logical playfield; canvas scales to fit
+    paddleMargin: 28,
+    paddleSpeed: 560,                  // px/s at 1.00× sensitivity
+    ballStartSpeed: 380, ballMaxSpeed: 1100,
+    maxBounceAngle: Math.PI / 3.2,
+    serveDelay: 0.9,
+    names: { p1: 'PLAYER 1', p2: 'PLAYER 2' },
+    storageKey: 'paddleduel.settings.v1',
+    statsKey: 'pong.stats.v1',
+    serviceWorker: true,               // true in the installable/app build (needs sw.js next to the page)
+    onlineServer: '',                  // your relay server, e.g. 'wss://pong.example.com' (see server/pong-relay.mjs)
+    onAchievement: null,               // optional hook: id => {} (forward to Game Center / Play Games in the app build)
+    backLink: {"url": "https://neyshanaddo-chat.github.io/Ai-Tools/index.html#apps", "label": "Ai-Tools"},                    // web build inside a site: { url: '../../#apps', label: 'Ai-Tools' } shows a ‹ back button on the home screen
+    fullscreenOnPlay: true,            // web build: on phones, go full screen + landscape when a game starts (Android browsers; iPhones don't allow it)
+    installPrompt: true,               // web build: on phones, offer to install the game on the home screen when it's opened in a browser
+  };
+
+  // Everything the player can change in Settings. These are the defaults.
+  const DEFAULTS = {
+    master: 80, sfx: 80, music: 40, muted: false, soundPack: 'retro',
+    mode: 'local',                     // 'local' (same device) | 'cpu' | 'online'
+    cpu: 'normal',                     // 'easy' | 'normal' | 'hard'
+    match: { mode: 'first', n: 3 },    // not saved: every visit starts at "First to 3" unless changed
+    coloursChosen: false,              // false → show colour picker on first start
+    theme: 'neon',
+    sens: { p1: 100, p2: 100 },        // % of CONFIG.paddleSpeed
+    ballSpeed: 100,                    // % of CONFIG.ballStartSpeed / ballMaxSpeed
+    speedUp: 'normal',                 // 'off' | 'normal' | 'fast'
+    serve: 'auto',                     // 'auto' | 'tap'
+    powerups: false,
+    haptics: true,
+    names: { p1: '', p2: '' },        // empty = translated default (PLAYER 1 / PLAYER 2)
+    lang: 'auto',
+    onlineServer: '',
+    colors: { p1: '#4fd1c5', p2: '#f6ad55', ball: '#ffffff', bg: '#0b0f14', net: '#2a3542' },
+    visual: { paddleH: 96, paddleW: 14, ballSize: 12, ballShape: 'square', glow: true,
+              trail: 8, net: 'dashed', scoreSize: 72, flash: true, bgDim: 50, intro: true },
+  };
+
+  const THEMES = {
+    neon:     { name: 'Neon',          colors: { p1: '#4fd1c5', p2: '#f6ad55', ball: '#ffffff', bg: '#0b0f14', net: '#2a3542' },
+                visual: { glow: true, trail: 8,  net: 'dashed', ballShape: 'square' } },
+    classic:  { name: 'Classic',       colors: { p1: '#ffffff', p2: '#ffffff', ball: '#ffffff', bg: '#000000', net: '#ffffff' },
+                visual: { glow: false, trail: 0,  net: 'dashed', ballShape: 'square' } },
+    retro:    { name: 'Retro CRT',     colors: { p1: '#33ff66', p2: '#33ff66', ball: '#ccffcc', bg: '#04140a', net: '#1f7a3d' },
+                visual: { glow: true, trail: 4,  net: 'dotted', ballShape: 'square' } },
+    sunset:   { name: 'Sunset',        colors: { p1: '#ff6b9a', p2: '#ffb347', ball: '#fff3e0', bg: '#1a0f1f', net: '#4a2c4f' },
+                visual: { glow: true, trail: 12, net: 'dashed', ballShape: 'round' } },
+    ocean:    { name: 'Ocean',         colors: { p1: '#5ad1ff', p2: '#9b8cff', ball: '#e6fbff', bg: '#06162a', net: '#1d3a5c' },
+                visual: { glow: true, trail: 10, net: 'dotted', ballShape: 'round' } },
+    contrast: { name: 'High contrast', colors: { p1: '#00e5ff', p2: '#ffd600', ball: '#ffffff', bg: '#000000', net: '#808080' },
+                visual: { glow: false, trail: 0,  net: 'solid',  ballShape: 'round' } },
+  };
+
+  /*i18n-start*/
+  const COLOUR_TARGETS = [['p1', '{p1} paddle'], ['p2', '{p2} paddle'], ['ball', 'Ball'], ['bg', 'Background'], ['net', 'Centre line']];
+  const LANGS = [['auto', 'Auto'], ['en', 'English'], ['es', 'Español'], ['fr', 'Français'], ['de', 'Deutsch']];
+  const MODE_NAMES = { local: '2 Player', cpu: 'vs Computer', online: 'Online' };
+  const DEFAULT_NAMES = ['PLAYER 1', 'PLAYER 2'];   // translated at runtime
+
+  // Slider / segmented / text control specs drive the Settings UI (add a line to add a setting).
+  const CONTROLS = {
+    sound: [
+      { path: 'master', label: 'Master volume', min: 0, max: 100, step: 1, fmt: v => v + '%', test: true },
+      { path: 'music', label: 'Music', min: 0, max: 100, step: 1, fmt: v => v + '%' },
+      { path: 'sfx', label: 'Sound effects', min: 0, max: 100, step: 1, fmt: v => v + '%', test: true },
+      { path: 'soundPack', label: 'Sound pack', options: [['retro', 'Retro'], ['soft', 'Soft'], ['arcade', 'Arcade']], test: true },
+      { path: 'muted', label: 'Sound', options: [[false, 'On'], [true, 'Muted']] },
+    ],
+    display: [
+      { path: 'visual.paddleH', label: 'Paddle length', min: 50, max: 180, step: 2, fmt: v => v + 'px' },
+      { path: 'visual.paddleW', label: 'Paddle thickness', min: 6, max: 28, step: 1, fmt: v => v + 'px' },
+      { path: 'visual.ballSize', label: 'Ball size', min: 6, max: 28, step: 1, fmt: v => v + 'px' },
+      { path: 'visual.ballShape', label: 'Ball shape', options: [['square', 'Square'], ['round', 'Round']] },
+      { path: 'visual.glow', label: 'Glow', options: [[true, 'On'], [false, 'Off']] },
+      { path: 'visual.trail', label: 'Ball trail', min: 0, max: 20, step: 1, fmt: v => v ? v : t('off') },
+      { path: 'visual.net', label: 'Centre line', options: [['dashed', 'Dashed'], ['dotted', 'Dotted'], ['solid', 'Solid'], ['none', 'None']] },
+      { path: 'visual.scoreSize', label: 'Score size', min: 32, max: 120, step: 2, fmt: v => v + 'px' },
+      { path: 'visual.flash', label: 'Flash on point', options: [[true, 'On'], [false, 'Off']] },
+      { path: 'visual.intro', label: 'Start-up animation', options: [[true, 'On'], [false, 'Off']] },
+    ],
+    bgimage: [
+      { path: 'visual.bgDim', label: 'Image dimming', min: 0, max: 90, step: 5, fmt: v => v + '%' },
+    ],
+    gameplay: [
+      { path: 'ballSpeed', label: 'Ball speed', min: 50, max: 200, step: 5, fmt: v => (v / 100).toFixed(2) + '×' },
+      { path: 'speedUp', label: 'Ball speeds up each hit', options: [['off', 'Off'], ['normal', 'Normal'], ['fast', 'Fast']] },
+      { path: 'serve', label: 'Serve', options: [['auto', 'Automatic'], ['tap', 'Tap to serve']] },
+      { path: 'powerups', label: 'Power-ups', options: [[false, 'Off'], [true, 'On']] },
+      { path: 'cpu', label: 'Computer difficulty', options: [['easy', 'Easy'], ['normal', 'Normal'], ['hard', 'Hard'], ['hardcore', 'Hardcore']] },
+      { path: 'sens.p1', label: '{p1} up/down sensitivity', min: 50, max: 200, step: 5, fmt: v => (v / 100).toFixed(2) + '×' },
+      { path: 'sens.p2', label: '{p2} up/down sensitivity', min: 50, max: 200, step: 5, fmt: v => (v / 100).toFixed(2) + '×' },
+      { path: 'match.mode', label: 'Match type', options: [['first', 'First to'], ['best', 'Best of']] },
+      { path: 'match.n', label: 'Points', options: [[3, '3'], [5, '5'], [10, '10']] },   // Custom (1-100) is in Game modes
+      { path: 'haptics', label: 'Vibration (phones)', options: [[true, 'On'], [false, 'Off']] },
+    ],
+    players: [
+      { path: 'names.p1', label: 'Player 1 name (your name online)', text: true },
+      { path: 'names.p2', label: 'Player 2 name', text: true },
+      { path: 'lang', label: 'Language', options: LANGS, reload: true },
+    ],
+  };
+
+  const ACH = [
+    ['first_match', 'First match', 'Finish a match'],
+    ['ten_matches', 'Regular', 'Finish 10 matches'],
+    ['rally20', 'Rally 20', 'Keep a rally going for 20 hits'],
+    ['rally50', 'Marathon', 'Keep a rally going for 50 hits'],
+    ['shutout', 'Shutout', 'Win without losing a point (3 or more to win)'],
+    ['comeback', 'Comeback', 'Win after being 3 points behind'],
+    ['speed', 'Top speed', 'Get the ball to its top speed'],
+    ['beat_easy', 'Warm-up', 'Beat the computer on Easy'],
+    ['beat_normal', 'Contender', 'Beat the computer on Normal'],
+    ['beat_hard', 'Champion', 'Beat the computer on Hard'],
+    ['beat_hardcore', 'Unbreakable', 'Beat the computer on Hardcore'],
+    ['collector', 'Collector', 'Collect 5 power-ups'],
+    ['online_win', 'Online winner', 'Win an online match'],
+  ];
+  /*i18n-end*/
+
+  // ================= TRANSLATIONS =================
+  // English text is the key. Table: "English": ["Español", "Français", "Deutsch"]
+  const I18N_TABLE = /*I18N*/{"off":["no","non","aus"],"BEST OF {n} · FIRST TO {w} WINS":["AL MEJOR DE {n} · GANA QUIEN LLEGUE A {w}","AU MEILLEUR DES {n} · {w} POUR GAGNER","BEST OF {n} · WER ZUERST {w} HAT, GEWINNT"],"FIRST TO {n}":["A {n} PUNTOS","EN {n} POINTS","BIS {n} PUNKTE"],"COMPUTER":["ORDENADOR","ORDINATEUR","COMPUTER"],"OPPONENT":["RIVAL","ADVERSAIRE","GEGNER"],"Resume":["Continuar","Reprendre","Weiter"],"Rematch":["Revancha","Revanche","Revanche"],"Play again":["Jugar otra vez","Rejouer","Nochmal spielen"],"Play":["Jugar","Jouer","Spielen"],"WINS {a}–{b}":["GANA {a}–{b}","GAGNE {a}–{b}","GEWINNT {a}–{b}"],"Press SPACE for a rematch":["Pulsa ESPACIO para la revancha","Appuyez sur ESPACE pour une revanche","Drücke LEERTASTE für eine Revanche"],"Press SPACE to play again":["Pulsa ESPACIO para volver a jugar","Appuyez sur ESPACE pour rejouer","Drücke LEERTASTE, um nochmal zu spielen"],"PAUSED":["PAUSA","PAUSE","PAUSE"],"Press SPACE to resume":["Pulsa ESPACIO para continuar","Appuyez sur ESPACE pour reprendre","Drücke LEERTASTE zum Fortsetzen"],"Press SPACE to start":["Pulsa ESPACIO para empezar","Appuyez sur ESPACE pour commencer","Drücke LEERTASTE zum Starten"],"Home":["Inicio","Accueil","Start"],"Quit match? Press again":["¿Salir de la partida? Pulsa otra vez","Quitter la partie ? Appuyez encore","Spiel beenden? Nochmal drücken"],"Brightness":["Brillo","Luminosité","Helligkeit"],"Drag up and down on your side of the screen.":["Desliza arriba y abajo en tu lado de la pantalla.","Glissez de haut en bas sur votre côté de l'écran.","Wische auf deiner Bildschirmseite nach oben und unten."],"Drag up and down anywhere to move your paddle.":["Desliza arriba y abajo en cualquier parte para mover tu pala.","Glissez de haut en bas n'importe où pour déplacer votre raquette.","Wische irgendwo nach oben und unten, um deinen Schläger zu bewegen."],"Player 1: W / S. Player 2: ↑ / ↓.":["Jugador 1: W / S. Jugador 2: ↑ / ↓.","Joueur 1 : W / S. Joueur 2 : ↑ / ↓.","Spieler 1: W / S. Spieler 2: ↑ / ↓."],"Move with W / S or ↑ / ↓.":["Muévete con W / S o ↑ / ↓.","Déplacez-vous avec W / S ou ↑ / ↓.","Bewege dich mit W / S oder ↑ / ↓."],"Keep the ball in play. If it gets past you, your opponent scores.":["Mantén la pelota en juego. Si se te escapa, tu rival anota.","Gardez la balle en jeu. Si elle vous échappe, votre adversaire marque.","Halte den Ball im Spiel. Kommt er an dir vorbei, punktet dein Gegner."],"Space or ❚❚ pauses. ⚙ opens settings.":["Espacio o ❚❚ pausa. ⚙ abre los ajustes.","Espace ou ❚❚ met en pause. ⚙ ouvre les réglages.","Leertaste oder ❚❚ pausiert. ⚙ öffnet die Einstellungen."],"Goal":["Objetivo","But du jeu","Ziel"],"Hit the ball back with your paddle. If it gets past you, your opponent scores. First to the winning score wins.":["Devuelve la pelota con tu pala. Si se te escapa, tu rival anota. Gana quien llegue primero a la puntuación final.","Renvoyez la balle avec votre raquette. Si elle vous échappe, votre adversaire marque. Le premier à atteindre le score gagnant l'emporte.","Schlag den Ball mit deinem Schläger zurück. Kommt er an dir vorbei, punktet dein Gegner. Wer zuerst die Siegpunktzahl erreicht, gewinnt."],"Controls":["Controles","Commandes","Steuerung"],"Modes":["Modos","Modes","Modi"],"Tips":["Consejos","Astuces","Tipps"],"Saved on this device. It works offline.":["Guardada en este dispositivo. Funciona sin conexión.","Enregistrée sur cet appareil. Fonctionne hors ligne.","Auf diesem Gerät gespeichert. Funktioniert offline."],"Couldn't save the image on this device, so it will only be used until the game is closed.":["No se pudo guardar la imagen en este dispositivo; solo se usará hasta que cierres el juego.","Impossible d'enregistrer l'image sur cet appareil : elle ne sera utilisée que jusqu'à la fermeture du jeu.","Das Bild konnte nicht gespeichert werden und wird nur verwendet, bis das Spiel geschlossen wird."],"Please choose an image file.":["Elige un archivo de imagen.","Veuillez choisir un fichier image.","Bitte wähle eine Bilddatei."],"Loading image…":["Cargando imagen…","Chargement de l'image…","Bild wird geladen…"],"That image couldn't be opened. Try a JPG or PNG.":["No se pudo abrir la imagen. Prueba con un JPG o PNG.","Impossible d'ouvrir cette image. Essayez un JPG ou un PNG.","Das Bild konnte nicht geöffnet werden. Versuche ein JPG oder PNG."],"{name} paddle":["Pala de {name}","Raquette de {name}","Schläger von {name}"],"Ball":["Pelota","Balle","Ball"],"{name} is hard to see against the background (contrast {r}:1, aim for 3:1 or more).":["{name} se ve mal sobre el fondo (contraste {r}:1; procura 3:1 o más).","{name} se voit mal sur le fond (contraste {r}:1, visez 3:1 ou plus).","{name} ist auf dem Hintergrund schwer zu sehen (Kontrast {r}:1, Ziel: 3:1 oder mehr)."],"Both players have very similar colours. Players can still tell their paddles apart by side.":["Los dos jugadores tienen colores muy parecidos. Aun así, cada uno sabe cuál es su pala por el lado.","Les deux joueurs ont des couleurs très proches. Chacun reconnaît quand même sa raquette par son côté.","Beide Spieler haben sehr ähnliche Farben. Die Schläger lassen sich trotzdem an der Seite unterscheiden."],"No matches yet.":["Todavía no hay partidas.","Aucune partie pour l'instant.","Noch keine Spiele."],"Summary":["Resumen","Résumé","Übersicht"],"Matches played":["Partidas jugadas","Parties jouées","Gespielte Spiele"],"Longest rally":["Peloteo más largo","Plus long échange","Längster Ballwechsel"],"Fastest ball":["Pelota más rápida","Balle la plus rapide","Schnellster Ball"],"Power-ups collected":["Potenciadores recogidos","Bonus récupérés","Gesammelte Power-ups"],"Wins":["Victorias","Victoires","Siege"],"Recent matches":["Partidas recientes","Parties récentes","Letzte Spiele"],"Achievements":["Logros","Succès","Erfolge"],"Online play isn't set up yet: add a server address below.":["El juego en línea aún no está configurado: añade una dirección de servidor abajo.","Le jeu en ligne n'est pas encore configuré : ajoutez une adresse de serveur ci-dessous.","Online-Spiel ist noch nicht eingerichtet: Gib unten eine Serveradresse ein."],"Couldn't reach the server. Check your connection and try again.":["No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.","Impossible de joindre le serveur. Vérifiez votre connexion et réessayez.","Server nicht erreichbar. Prüfe deine Verbindung und versuche es erneut."],"Connecting…":["Conectando…","Connexion…","Verbinde…"],"Enter the 4-character code.":["Introduce el código de 4 caracteres.","Saisissez le code à 4 caractères.","Gib den 4-stelligen Code ein."],"No game with that code.":["No hay ninguna partida con ese código.","Aucune partie avec ce code.","Kein Spiel mit diesem Code."],"That game is already full.":["Esa partida ya está completa.","Cette partie est déjà complète.","Dieses Spiel ist bereits voll."],"Something went wrong. Try again.":["Algo ha fallado. Inténtalo de nuevo.","Un problème est survenu. Réessayez.","Etwas ist schiefgelaufen. Versuche es erneut."],"Connected!":["¡Conectado!","Connecté !","Verbunden!"],"Your opponent left the game.":["Tu rival ha salido de la partida.","Votre adversaire a quitté la partie.","Dein Gegner hat das Spiel verlassen."],"Connection lost.":["Se ha perdido la conexión.","Connexion perdue.","Verbindung verloren."],"Bigger paddle!":["¡Pala más grande!","Raquette plus grande !","Größerer Schläger!"],"Multi-ball!":["¡Multibola!","Multi-balles !","Multiball!"],"Slow motion!":["¡Cámara lenta!","Ralenti !","Zeitlupe!"],"Tap to serve":["Toca para sacar","Touchez pour servir","Tippe zum Aufschlagen"],"Tap or press SPACE to serve":["Toca o pulsa ESPACIO para sacar","Touchez ou appuyez sur ESPACE pour servir","Tippe oder drücke LEERTASTE zum Aufschlagen"],"SHIELD UP: {n} RETURNS LEFT":["ESCUDO ACTIVO: QUEDAN {n} DEVOLUCIONES","BOUCLIER ACTIF : ENCORE {n} RENVOIS","SCHILD AKTIV: NOCH {n} RÜCKSCHLÄGE"],"SHIELD DOWN":["ESCUDO ABAJO","BOUCLIER TOMBÉ","SCHILD WEG"],"SLOW MOTION":["CÁMARA LENTA","RALENTI","ZEITLUPE"],"COMPUTER: {lvl}":["ORDENADOR: {lvl}","ORDINATEUR : {lvl}","COMPUTER: {lvl}"],"ONLINE":["EN LÍNEA","EN LIGNE","ONLINE"],"MUTED":["SILENCIO","SON COUPÉ","STUMM"],"Installed ✓":["Instalada ✓","Installée ✓","Installiert ✓"],"Install app":["Instalar app","Installer l'app","App installieren"],"Get the app":["Consigue la app","Obtenir l'app","Hol dir die App"],"Add {name} to your home screen to play full screen and offline.":["Añade {name} a tu pantalla de inicio para jugar a pantalla completa y sin conexión.","Ajoutez {name} à votre écran d'accueil pour jouer en plein écran et hors ligne.","Füge {name} zu deinem Home-Bildschirm hinzu, um im Vollbild und offline zu spielen."],"Not now":["Ahora no","Plus tard","Nicht jetzt"],"Never show again":["No volver a mostrar","Ne plus afficher","Nicht mehr anzeigen"],"Install":["Instalar","Installer","Installieren"],"In Safari, tap Share ⬆ at the bottom of the screen, then \"Add to Home Screen\".":["En Safari, toca Compartir ⬆ en la parte inferior y luego «Añadir a pantalla de inicio».","Dans Safari, touchez Partager ⬆ en bas de l'écran, puis « Sur l'écran d'accueil ».","Tippe in Safari unten auf Teilen ⬆ und dann auf „Zum Home-Bildschirm“."],"Got it":["Entendido","Compris","Verstanden"],"To install, open this page in your browser (Safari on iPhone, Chrome on Android), then choose \"Add to Home Screen\" or \"Install app\".":["Para instalarla, abre esta página en tu navegador (Safari en iPhone, Chrome en Android) y elige «Añadir a pantalla de inicio» o «Instalar aplicación».","Pour l'installer, ouvrez cette page dans votre navigateur (Safari sur iPhone, Chrome sur Android), puis choisissez « Sur l'écran d'accueil » ou « Installer l'application ».","Zum Installieren öffne diese Seite in deinem Browser (Safari auf dem iPhone, Chrome auf Android) und wähle „Zum Home-Bildschirm“ bzw. „App installieren“."],"Copy link":["Copiar enlace","Copier le lien","Link kopieren"],"Link copied":["Enlace copiado","Lien copié","Link kopiert"],"In your browser menu ⋮, choose \"Install app\" or \"Add to Home screen\".":["En el menú del navegador ⋮, elige «Instalar aplicación» o «Añadir a pantalla de inicio».","Dans le menu du navigateur ⋮, choisissez « Installer l'application » ou « Ajouter à l'écran d'accueil ».","Wähle im Browsermenü ⋮ „App installieren“ oder „Zum Startbildschirm hinzufügen“."],"Settings":["Ajustes","Réglages","Einstellungen"],"How to play":["Cómo jugar","Comment jouer","Spielanleitung"],"↻ Turn your phone sideways for a bigger court":["↻ Gira el móvil en horizontal para una pista más grande","↻ Tournez votre téléphone à l'horizontale pour un terrain plus grand","↻ Dreh dein Handy quer für ein größeres Spielfeld"],"Game modes":["Modos de juego","Modes de jeu","Spielmodi"],"Choose a colour":["Elige un color","Choisissez une couleur","Wähle eine Farbe"],"Drag on a wheel to choose a colour for each player. You can change it later in ⚙ Settings.":["Desliza sobre una rueda para elegir el color de cada jugador. Puedes cambiarlo luego en ⚙ Ajustes.","Glissez sur une roue pour choisir la couleur de chaque joueur. Vous pourrez la changer dans ⚙ Réglages.","Wische über ein Farbrad, um für jeden Spieler eine Farbe zu wählen. Du kannst sie später in ⚙ Einstellungen ändern."],"Use defaults":["Usar predeterminados","Valeurs par défaut","Standard verwenden"],"Start game ▶":["Empezar ▶","Commencer ▶","Spiel starten ▶"],"Players":["Jugadores","Joueurs","Spieler"],"2 Player":["2 jugadores","2 joueurs","2 Spieler"],"vs Computer":["Contra el ordenador","Contre l'ordinateur","Gegen Computer"],"Online":["En línea","En ligne","Online"],"Computer difficulty":["Dificultad del ordenador","Difficulté de l'ordinateur","Computer-Schwierigkeit"],"Easy":["Fácil","Facile","Leicht"],"Normal":["Normal","Normal","Normal"],"Hard":["Difícil","Difficile","Schwer"],"Hardcore":["Extremo","Extrême","Hardcore"],"Match":["Partida","Partie","Spiel"],"First to":["Primero a","Premier à","Bis"],"Best of":["Al mejor de","Au meilleur des","Best of"],"Points to win":["Puntos para ganar","Points pour gagner","Punkte zum Sieg"],"Custom":["Personalizado","Personnalisé","Eigene"],"Leave online game":["Salir de la partida en línea","Quitter la partie en ligne","Online-Spiel verlassen"],"Done":["Listo","Terminé","Fertig"],"Online game":["Partida en línea","Partie en ligne","Online-Spiel"],"Play a friend on another device. One of you hosts and shares the code, the other joins with it.":["Juega con un amigo en otro dispositivo. Uno crea la partida y comparte el código; el otro se une con él.","Jouez avec un ami sur un autre appareil. L'un crée la partie et partage le code, l'autre la rejoint avec ce code.","Spiel mit einem Freund auf einem anderen Gerät. Einer erstellt das Spiel und teilt den Code, der andere tritt damit bei."],"Host a game":["Crear partida","Créer une partie","Spiel erstellen"],"Join a game":["Unirse a una partida","Rejoindre une partie","Spiel beitreten"],"Join":["Unirse","Rejoindre","Beitreten"],"Share this code with your friend:":["Comparte este código con tu amigo:","Partagez ce code avec votre ami :","Teile diesen Code mit deinem Freund:"],"Waiting for them to join…":["Esperando a que se una…","En attente de votre ami…","Warte, bis dein Freund beitritt…"],"Server":["Servidor","Serveur","Server"],"Server address":["Dirección del servidor","Adresse du serveur","Serveradresse"],"Cancel":["Cancelar","Annuler","Abbrechen"],"Sound":["Sonido","Son","Ton"],"Colours":["Colores","Couleurs","Farben"],"Display":["Pantalla","Affichage","Anzeige"],"Gameplay":["Juego","Jeu","Spiel"],"Stats":["Estadísticas","Stats","Statistik"],"Theme":["Tema","Thème","Thema"],"Colour of…":["Color de…","Couleur de…","Farbe von…"],"Background image":["Imagen de fondo","Image de fond","Hintergrundbild"],"Use your own picture behind the court. It's stored only on this device, so it works offline.":["Usa tu propia foto detrás de la pista. Solo se guarda en este dispositivo, así que funciona sin conexión.","Utilisez votre propre photo derrière le terrain. Elle reste uniquement sur cet appareil et fonctionne hors ligne.","Verwende dein eigenes Bild hinter dem Spielfeld. Es wird nur auf diesem Gerät gespeichert und funktioniert offline."],"Choose image…":["Elegir imagen…","Choisir une image…","Bild auswählen…"],"Remove image":["Quitar imagen","Retirer l'image","Bild entfernen"],"Clear stats":["Borrar estadísticas","Effacer les stats","Statistik löschen"],"Reset all to defaults":["Restablecer todo","Tout réinitialiser","Alles zurücksetzen"],"{p1} paddle":["Pala de {p1}","Raquette de {p1}","Schläger von {p1}"],"{p2} paddle":["Pala de {p2}","Raquette de {p2}","Schläger von {p2}"],"Background":["Fondo","Fond","Hintergrund"],"Centre line":["Línea central","Ligne centrale","Mittellinie"],"Auto":["Automático","Auto","Automatisch"],"PLAYER 1":["JUGADOR 1","JOUEUR 1","SPIELER 1"],"PLAYER 2":["JUGADOR 2","JOUEUR 2","SPIELER 2"],"Master volume":["Volumen general","Volume général","Gesamtlautstärke"],"Music":["Música","Musique","Musik"],"Sound effects":["Efectos de sonido","Effets sonores","Soundeffekte"],"Sound pack":["Pack de sonidos","Pack de sons","Soundpaket"],"Retro":["Retro","Rétro","Retro"],"Soft":["Suave","Doux","Sanft"],"Arcade":["Arcade","Arcade","Arcade"],"On":["Sí","Oui","An"],"Muted":["Silenciado","Coupé","Stumm"],"Paddle length":["Largo de la pala","Longueur de la raquette","Schlägerlänge"],"Paddle thickness":["Grosor de la pala","Épaisseur de la raquette","Schlägerdicke"],"Ball size":["Tamaño de la pelota","Taille de la balle","Ballgröße"],"Ball shape":["Forma de la pelota","Forme de la balle","Ballform"],"Square":["Cuadrada","Carrée","Eckig"],"Round":["Redonda","Ronde","Rund"],"Glow":["Brillo neón","Halo","Leuchten"],"Off":["No","Non","Aus"],"Ball trail":["Estela de la pelota","Traînée de la balle","Ballspur"],"Dashed":["Discontinua","Pointillés","Gestrichelt"],"Dotted":["Punteada","Points","Gepunktet"],"Solid":["Continua","Pleine","Durchgehend"],"None":["Ninguna","Aucune","Keine"],"Score size":["Tamaño del marcador","Taille du score","Punktestandgröße"],"Flash on point":["Destello al anotar","Flash à chaque point","Blitz bei Punkt"],"Start-up animation":["Animación de inicio","Animation de démarrage","Startanimation"],"Image dimming":["Oscurecer imagen","Assombrir l'image","Bild abdunkeln"],"Ball speed":["Velocidad de la pelota","Vitesse de la balle","Ballgeschwindigkeit"],"Ball speeds up each hit":["La pelota acelera con cada golpe","La balle accélère à chaque frappe","Ball wird bei jedem Treffer schneller"],"Fast":["Rápido","Rapide","Schnell"],"Serve":["Saque","Service","Aufschlag"],"Automatic":["Automático","Automatique","Automatisch"],"Power-ups":["Potenciadores","Bonus","Power-ups"],"{p1} up/down sensitivity":["Sensibilidad de {p1}","Sensibilité de {p1}","Empfindlichkeit {p1}"],"{p2} up/down sensitivity":["Sensibilidad de {p2}","Sensibilité de {p2}","Empfindlichkeit {p2}"],"Match type":["Tipo de partida","Type de partie","Spielart"],"Points":["Puntos","Points","Punkte"],"Vibration (phones)":["Vibración (móviles)","Vibration (téléphones)","Vibration (Handys)"],"Player 1 name (your name online)":["Nombre del jugador 1 (tu nombre en línea)","Nom du joueur 1 (votre nom en ligne)","Name Spieler 1 (dein Online-Name)"],"Player 2 name":["Nombre del jugador 2","Nom du joueur 2","Name Spieler 2"],"Language":["Idioma","Langue","Sprache"],"First match":["Primera partida","Première partie","Erstes Spiel"],"Finish a match":["Termina una partida","Terminez une partie","Beende ein Spiel"],"Regular":["Habitual","Habitué","Stammspieler"],"Finish 10 matches":["Termina 10 partidas","Terminez 10 parties","Beende 10 Spiele"],"Rally 20":["Peloteo de 20","Échange de 20","20er-Ballwechsel"],"Keep a rally going for 20 hits":["Mantén un peloteo de 20 golpes","Tenez un échange de 20 frappes","Halte einen Ballwechsel 20 Treffer lang"],"Marathon":["Maratón","Marathon","Marathon"],"Keep a rally going for 50 hits":["Mantén un peloteo de 50 golpes","Tenez un échange de 50 frappes","Halte einen Ballwechsel 50 Treffer lang"],"Shutout":["Imbatible","Sans appel","Zu null"],"Win without losing a point (3 or more to win)":["Gana sin perder un punto (a 3 o más)","Gagnez sans perdre un point (3 points ou plus)","Gewinne ohne Gegenpunkt (ab 3 Punkten)"],"Comeback":["Remontada","Remontada","Aufholjagd"],"Win after being 3 points behind":["Gana tras ir perdiendo por 3 puntos","Gagnez après avoir été mené de 3 points","Gewinne nach 3 Punkten Rückstand"],"Top speed":["Velocidad máxima","Vitesse maximale","Höchsttempo"],"Get the ball to its top speed":["Lleva la pelota a su velocidad máxima","Amenez la balle à sa vitesse maximale","Bring den Ball auf Höchstgeschwindigkeit"],"Warm-up":["Calentamiento","Échauffement","Aufwärmen"],"Beat the computer on Easy":["Gana al ordenador en Fácil","Battez l'ordinateur en Facile","Besiege den Computer auf Leicht"],"Contender":["Aspirante","Prétendant","Herausforderer"],"Beat the computer on Normal":["Gana al ordenador en Normal","Battez l'ordinateur en Normal","Besiege den Computer auf Normal"],"Champion":["Campeón","Champion","Champion"],"Beat the computer on Hard":["Gana al ordenador en Difícil","Battez l'ordinateur en Difficile","Besiege den Computer auf Schwer"],"Unbreakable":["Imbatible total","Infaillible","Unbezwingbar"],"Beat the computer on Hardcore":["Gana al ordenador en Extremo","Battez l'ordinateur en Extrême","Besiege den Computer auf Hardcore"],"Collector":["Coleccionista","Collectionneur","Sammler"],"Collect 5 power-ups":["Recoge 5 potenciadores","Récupérez 5 bonus","Sammle 5 Power-ups"],"Online winner":["Ganador en línea","Vainqueur en ligne","Online-Sieger"],"Win an online match":["Gana una partida en línea","Gagnez une partie en ligne","Gewinne ein Online-Spiel"],"Neon":["Neón","Néon","Neon"],"Classic":["Clásico","Classique","Klassisch"],"Retro CRT":["Retro CRT","Rétro CRT","Retro-CRT"],"Sunset":["Atardecer","Coucher de soleil","Sonnenuntergang"],"Ocean":["Océano","Océan","Ozean"],"High contrast":["Alto contraste","Contraste élevé","Hoher Kontrast"],"Keyboard: Player 1 uses W / S, Player 2 uses ↑ / ↓. Against the computer or online, either works.":["Teclado: el jugador 1 usa W / S y el jugador 2 ↑ / ↓. Contra el ordenador o en línea, sirven ambos.","Clavier : le joueur 1 utilise W / S, le joueur 2 ↑ / ↓. Contre l'ordinateur ou en ligne, les deux fonctionnent.","Tastatur: Spieler 1 nutzt W / S, Spieler 2 ↑ / ↓. Gegen den Computer oder online geht beides."],"Touch: drag up and down on your half of the screen (anywhere when you play alone or online).":["Táctil: desliza arriba y abajo en tu mitad de la pantalla (en cualquier parte si juegas solo o en línea).","Tactile : glissez de haut en bas sur votre moitié de l'écran (n'importe où en solo ou en ligne).","Touch: Wische auf deiner Bildschirmhälfte nach oben und unten (allein oder online überall)."],"Controller: left stick or D-pad moves, A serves, Start pauses.":["Mando: el stick izquierdo o la cruceta mueven, A saca y Start pausa.","Manette : stick gauche ou croix pour bouger, A pour servir, Start pour la pause.","Controller: linker Stick oder Steuerkreuz bewegt, A schlägt auf, Start pausiert."],"Space, P or ❚❚ pauses. Esc or ⚙ opens settings.":["Espacio, P o ❚❚ pausa. Esc o ⚙ abre los ajustes.","Espace, P ou ❚❚ met en pause. Échap ou ⚙ ouvre les réglages.","Leertaste, P oder ❚❚ pausiert. Esc oder ⚙ öffnet die Einstellungen."],"In the pause menu, ⌂ Home (H, or Back on a controller) returns to the home screen. Press it twice to quit the match.":["En el menú de pausa, ⌂ Inicio (H, o Atrás en el mando) vuelve a la pantalla de inicio. Púlsalo dos veces para salir de la partida.","Dans le menu pause, ⌂ Accueil (H, ou Retour sur la manette) ramène à l'écran d'accueil. Appuyez deux fois pour quitter la partie.","Im Pausenmenü bringt dich ⌂ Start (H oder Zurück am Controller) zum Startbildschirm. Zweimal drücken, um das Spiel zu beenden."],"Choose a mode in Game modes on the home screen (or press G).":["Elige un modo en Modos de juego, en la pantalla de inicio (o pulsa G).","Choisissez un mode dans Modes de jeu sur l'écran d'accueil (ou appuyez sur G).","Wähle einen Modus unter Spielmodi auf dem Startbildschirm (oder drücke G)."],"2 Player: two players share one screen or keyboard.":["2 jugadores: dos jugadores comparten pantalla o teclado.","2 joueurs : deux joueurs partagent un écran ou un clavier.","2 Spieler: Zwei Spieler teilen sich Bildschirm oder Tastatur."],"vs Computer: play alone on Easy, Normal, Hard or Hardcore. On Hardcore the computer cannot miss until it has returned the ball 10 times in a rally.":["Contra el ordenador: juega solo en Fácil, Normal, Difícil o Extremo. En Extremo el ordenador no puede fallar hasta haber devuelto la pelota 10 veces en un peloteo.","Contre l'ordinateur : jouez seul en Facile, Normal, Difficile ou Extrême. En Extrême, l'ordinateur ne peut pas rater avant d'avoir renvoyé la balle 10 fois dans un échange.","Gegen Computer: Spiel allein auf Leicht, Normal, Schwer oder Hardcore. Auf Hardcore kann der Computer erst danebenschlagen, wenn er den Ball in einem Ballwechsel 10-mal zurückgespielt hat."],"Online: one player hosts and shares a 4-letter code, the other joins on their own device.":["En línea: un jugador crea la partida y comparte un código de 4 letras; el otro se une desde su dispositivo.","En ligne : un joueur crée la partie et partage un code à 4 lettres, l'autre la rejoint depuis son appareil.","Online: Ein Spieler erstellt das Spiel und teilt einen 4-stelligen Code, der andere tritt auf seinem Gerät bei."],"Hit the ball with the end of your paddle for a steeper angle.":["Golpea con el extremo de la pala para un ángulo más cerrado.","Frappez avec le bout de la raquette pour un angle plus marqué.","Triff den Ball mit dem Schlägerende für einen steileren Winkel."],"Turn on power-ups in Settings → Gameplay for bigger paddles, extra balls and slow motion.":["Activa los potenciadores en Ajustes → Juego para palas más grandes, bolas extra y cámara lenta.","Activez les bonus dans Réglages → Jeu pour des raquettes plus grandes, des balles en plus et le ralenti.","Schalte Power-ups unter Einstellungen → Spiel ein: größere Schläger, Extrabälle und Zeitlupe."]}/*END-I18N*/;
+  const I18N_LANGS = ['es', 'fr', 'de'];
+  let LANG = 'en';
+  function t(s, vars) {
+    let r = s;
+    const row = LANG !== 'en' && I18N_TABLE[s];
+    if (row) r = row[I18N_LANGS.indexOf(LANG)] || s;
+    if (vars) for (const k in vars) r = r.split('{' + k + '}').join(vars[k]);
+    return r;
+  }
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const cleanName = s => String(s || '').toUpperCase().replace(/[^A-Z0-9ÀÁÂÄÇÈÉÊËÌÍÎÏÑÒÓÔÖÙÚÛÜß .\-_]/g, '').slice(0, 12);
+
+  // ================= COLOUR UTILITIES =================
+  const hexToRgb = hex => { const n = parseInt(hex.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+  const rgbToHex = (r, g, b) => '#' + [r, g, b].map(x => Math.round(Math.max(0, Math.min(255, x))).toString(16).padStart(2, '0')).join('');
+  const hsvToRgb = (h, s, v) => { const f = n => { const k = (n + h / 60) % 6; return (v - v * s * Math.max(0, Math.min(k, 4 - k, 1))) * 255; }; return [f(5), f(3), f(1)]; };
+  const hsvToHex = (h, s, v) => rgbToHex(...hsvToRgb(h, s, v));
+  const rgbToHsv = (r, g, b) => { r /= 255; g /= 255; b /= 255; const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn; let h = 0;
+    if (d) { if (mx === r) h = ((g - b) / d) % 6; else if (mx === g) h = (b - r) / d + 2; else h = (r - g) / d + 4; h *= 60; if (h < 0) h += 360; }
+    return [h, mx ? d / mx : 0, mx]; };
+  const lum = hex => { const c = hexToRgb(hex).map(x => { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+  const contrast = (a, b) => { const A = lum(a), B = lum(b); return (Math.max(A, B) + 0.05) / (Math.min(A, B) + 0.05); };
+  const mix = (a, b, t2) => { const A = hexToRgb(a), B = hexToRgb(b); return rgbToHex(A[0] + (B[0] - A[0]) * t2, A[1] + (B[1] - A[1]) * t2, A[2] + (B[2] - A[2]) * t2); };
+  const rgba = (hex, a) => { const [r, g, b] = hexToRgb(hex); return `rgba(${r},${g},${b},${a})`; };
+  const colourDistance = (a, b) => { const A = hexToRgb(a), B = hexToRgb(b); return Math.hypot(A[0] - B[0], A[1] - B[1], A[2] - B[2]); };
+  const isHex = s => /^#[0-9a-f]{6}$/i.test(s);
+
+  // ================= SETTINGS (saved in this browser) =================
+  const clone = o => JSON.parse(JSON.stringify(o));
+  function mergeValid(def, src) {           // keep only values of the right type
+    if (!src || typeof src !== 'object') return clone(def);
+    const out = {};
+    for (const k in def) {
+      const d = def[k], s = src[k];
+      if (d && typeof d === 'object') out[k] = mergeValid(d, s);
+      else if (typeof d === 'string' && d.startsWith('#')) out[k] = (typeof s === 'string' && isHex(s)) ? s.toLowerCase() : d;
+      else out[k] = (typeof s === typeof d) ? s : d;
+    }
+    return out;
+  }
+  function loadJSON(key) { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) { return null; } }
+  function saveJSON(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch (e) { /* storage unavailable */ } }
+  function savePrefs() { saveJSON(CONFIG.storageKey, prefs); }
+  const getPath = p => p.split('.').reduce((o, k) => o[k], prefs);
+  const setPath = (p, v) => { const ks = p.split('.'); const last = ks.pop(); ks.reduce((o, k) => o[k], prefs)[last] = v; };
+
+  let prefs = mergeValid(DEFAULTS, loadJSON(CONFIG.storageKey));
+  prefs.match = clone(DEFAULTS.match);      // rule: no selection → First to 3
+  const SPEEDUP = { off: 1, normal: 1.06, fast: 1.1 };
+  const AI = { easy: { speed: 0.57, react: 0.31, err: 67 },   // v0.10: Easy tuned ~10% harder (returns ~10% more shots than v0.9: 90 vs 82 of 200 in testing)
+              normal: { speed: 0.78, react: 0.18, err: 30 }, hard: { speed: 1.05, react: 0.07, err: 10 },
+              hardcore: { speed: 1.05, react: 0.07, err: 10 } };   // plays like Hard once its shield is down
+  const HARDCORE_RETURNS = 10;             // Hardcore: the computer can't miss until it has returned the ball this many times in a rally
+  const HC_SHIELD = { speed: 1.9, react: 0.03, err: 0 };
+  const PACKS = { retro: { type: null, mul: 1, sweep: 1, vol: 1, dur: 1 }, soft: { type: 'sine', mul: 0.8, sweep: 1, vol: 0.9, dur: 1.7 },
+                  arcade: { type: 'sawtooth', mul: 1.15, sweep: 1.8, vol: 0.65, dur: 1 } };
+  const oneOf = (v, list, d) => list.includes(v) ? v : d;
+  prefs.speedUp = oneOf(prefs.speedUp, Object.keys(SPEEDUP), DEFAULTS.speedUp);
+  prefs.mode = oneOf(prefs.mode, ['local', 'cpu', 'online'], 'local');
+  prefs.cpu = oneOf(prefs.cpu, Object.keys(AI), 'normal');
+  prefs.serve = oneOf(prefs.serve, ['auto', 'tap'], 'auto');
+  prefs.soundPack = oneOf(prefs.soundPack, Object.keys(PACKS), 'retro');
+  prefs.lang = oneOf(prefs.lang, LANGS.map(l => l[0]), 'auto');
+  ['p1', 'p2'].forEach(k => { prefs.names[k] = cleanName(prefs.names[k]); if (prefs.names[k] === CONFIG.names[k]) prefs.names[k] = ''; });
+  // clamp numeric prefs to their slider ranges
+  Object.values(CONTROLS).flat().forEach(c => { if (c.min !== undefined) setPath(c.path, Math.max(c.min, Math.min(c.max, getPath(c.path)))); });
+
+  LANG = prefs.lang !== 'auto' ? prefs.lang : (navigator.language || 'en').slice(0, 2).toLowerCase();
+  if (LANG !== 'en' && !I18N_LANGS.includes(LANG)) LANG = 'en';
+  document.documentElement.lang = LANG;
+
+  // stats + achievements (separate key so "Reset settings" doesn't wipe them)
+  const DEFAULT_STATS = { played: 0, longestRally: 0, topSpeed: 0, powerups: 0, wins: {}, matches: [], ach: {} };
+  let stats = Object.assign(clone(DEFAULT_STATS), loadJSON(CONFIG.statsKey) || {});
+  const saveStats = () => saveJSON(CONFIG.statsKey, stats);
+
+  // ================= CANVAS =================
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const overlay = document.getElementById('overlay');
+  const promptEl = document.getElementById('prompt');
+  const gearBtn = document.getElementById('gearBtn');
+  const pauseBtn = document.getElementById('pauseBtn');
+  // Install offer (web build): state lives up here so the overlay code can use it from the start
+  const inst = { evt: null, shown: false, btn: null, el: null };
+  let backLinkEl = null;                 // ‹ back to the site this game is listed on (web build only)
+  if (CONFIG.backLink && /^(\.{0,2}\/|https:\/\/)/.test(CONFIG.backLink.url)) {
+    backLinkEl = document.createElement('a');
+    backLinkEl.id = 'backLink'; backLinkEl.href = CONFIG.backLink.url; backLinkEl.textContent = '‹ ' + CONFIG.backLink.label;
+    backLinkEl.className = 'hidden';
+    document.getElementById('wrap').appendChild(backLinkEl);
+  }
+  const W = CONFIG.width, H = CONFIG.height;
+  let scale = 1;
+
+  const wrapEl = document.getElementById('wrap');
+  const isTouch = () => window.matchMedia && matchMedia('(pointer: coarse)').matches;
+  function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const cs = getComputedStyle(wrapEl);
+    const aw = wrapEl.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const ah = wrapEl.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    scale = Math.min(aw * 0.96 / W, ah * 0.96 / H);
+    const rh = document.getElementById('rotateHint');
+    if (rh) rh.classList.toggle('hidden', !(isTouch() && window.innerHeight > window.innerWidth));
+    canvas.style.width = (W * scale) + 'px';
+    canvas.style.height = (H * scale) + 'px';
+    canvas.width = Math.round(W * scale * dpr);
+    canvas.height = Math.round(H * scale * dpr);
+    ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ================= GAME STATE =================
+  const STATE = { INTRO: 'intro', MENU: 'menu', SERVE: 'serve', PLAY: 'play', PAUSED: 'paused', COUNTDOWN: 'countdown', OVER: 'over' };
+  const RESUME_COUNT = 3;                   // seconds of 3-2-1 after un-pausing
+  let countdownT = 0, cdShown = 0;
+  const live = () => state === STATE.PLAY || state === STATE.SERVE || state === STATE.COUNTDOWN;
+  const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const INTRO_LEN = 2.4, INTRO_MENU_AT = 1.9;
+  let introT = 0, introMenuShown = false;
+  let state = STATE.MENU, pausedFrom = null, overlayKind = 'menu';
+  const POINT_PRESETS = [3, 5, 10];
+  let nCustomOn = false;                  // Custom points box showing
+  const clampPoints = v => { v = Math.round(+v); return isFinite(v) ? Math.max(1, Math.min(100, v)) : 3; };
+  let modal = null;                       // null | 'settings' | 'picker' | 'help' | 'online' | 'modes' | 'devLayer'
+  const devHooks = { overlay() {}, afterDraw() {}, escape() {}, frame() {} };   // filled in by the developer-mode block (dev copy only)
+  let serveTimer = 0, serveDir = Math.random() < 0.5 ? -1 : 1, winner = null, flash = 0;
+  let waitingServe = false, serveReq = false;
+
+  // online state (declared early: geometry helpers read it)
+  const net = { ws: null, role: null, connected: false, code: '', peerName: '', remoteY: null, st: null, stAt: 0, sendT: 0, evq: [], geo: null, match: null };
+  const isGuest = () => prefs.mode === 'online' && net.connected && net.role === 'guest';
+  const isHost = () => prefs.mode === 'online' && net.connected && net.role === 'host';
+  const localKey = () => (prefs.mode === 'online' && net.role === 'guest') ? 'p2' : 'p1';
+  const singleControl = () => prefs.mode !== 'local';
+
+  const p1 = { x: 0, y: 0, score: 0, touchY: null, key: 'p1', big: 0 };
+  const p2 = { x: 0, y: 0, score: 0, touchY: null, key: 'p2', big: 0 };
+  const P = k => (k === 'p1' ? p1 : p2);
+  const mkBall = () => ({ x: W / 2, y: H / 2, vx: 0, vy: 0, speed: CONFIG.ballStartSpeed, trail: [], last: null });
+  const ball = mkBall();
+  const balls = [ball];                    // balls[0] is always `ball`; power-ups can add more
+  let pu = null, puTimer = 8, slowT = 0;
+  const match = { rally: 0, cpuReturns: 0, deficit: { p1: 0, p2: 0 } };
+  const shieldUp = () => prefs.mode === 'cpu' && prefs.cpu === 'hardcore' && match.cpuReturns < HARDCORE_RETURNS;
+
+  const PH = () => (isGuest() && net.geo) ? net.geo[0] : prefs.visual.paddleH;
+  const PW = () => (isGuest() && net.geo) ? net.geo[1] : prefs.visual.paddleW;
+  const BS = () => (isGuest() && net.geo) ? net.geo[2] : prefs.visual.ballSize;
+  const PHp = p => PH() * (p.big > 0 ? 1.5 : 1);
+  const curMatch = () => (isGuest() && net.match) ? net.match : prefs.match;
+  const winTarget = () => curMatch().mode === 'best' ? Math.floor(curMatch().n / 2) + 1 : curMatch().n;
+  const matchLabel = () => curMatch().mode === 'best'
+    ? t('BEST OF {n} · FIRST TO {w} WINS', { n: curMatch().n, w: winTarget() }) : t('FIRST TO {n}', { n: curMatch().n });
+  const startSpeed = () => CONFIG.ballStartSpeed * prefs.ballSpeed / 100;
+  const maxSpeed = () => Math.min(CONFIG.ballMaxSpeed * prefs.ballSpeed / 100, 2200);
+  const needsTap = () => prefs.serve === 'tap' && prefs.mode !== 'online';
+
+  function NM(k) {
+    if (prefs.mode === 'cpu' && k === 'p2') return t('COMPUTER');
+    if (prefs.mode === 'online' && net.connected) return k === localKey() ? (prefs.names.p1 || t(CONFIG.names.p1)) : (net.peerName || t('OPPONENT'));
+    return prefs.names[k] || t(CONFIG.names[k]);
+  }
+
+  function layoutPaddles() {
+    p1.x = CONFIG.paddleMargin;
+    p2.x = W - CONFIG.paddleMargin - PW();
+    p1.y = Math.max(0, Math.min(H - PHp(p1), p1.y));
+    p2.y = Math.max(0, Math.min(H - PHp(p2), p2.y));
+  }
+  p1.y = p2.y = (H - PH()) / 2;
+  layoutPaddles();
+
+  // Labels can contain {p1}/{p2}: replaced by live name spans
+  const fmtLabel = s => esc(t(s)).replace(/\{(p[12])\}/g, (m, k) => `<span data-name="${k}">${esc(NM(k))}</span>`);
+
+  // Apply colours/visuals/names to the page so menus match the game
+  function applyVisuals() {
+    const r = document.documentElement.style, c = prefs.colors;
+    r.setProperty('--p1', c.p1); r.setProperty('--p2', c.p2); r.setProperty('--bg', c.bg);
+    r.setProperty('--overlay-bg', rgba(c.bg, 0.8));
+    document.querySelectorAll('[data-name]').forEach(e => e.textContent = NM(e.dataset.name));
+    layoutPaddles();
+    balls.forEach(b => { b.trail.length = Math.min(b.trail.length, prefs.visual.trail); });
+    document.querySelectorAll('#opts button[data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === prefs.match.mode));
+    const custom = nCustomOn || !POINT_PRESETS.includes(prefs.match.n);
+    document.querySelectorAll('#pointsRow button[data-n]').forEach(b => b.classList.toggle('on', !custom && +b.dataset.n === prefs.match.n));
+    document.getElementById('nCustomBtn').classList.toggle('on', custom);
+    const ci = document.getElementById('nCustom');
+    ci.classList.toggle('hidden', !custom);
+    if (document.activeElement !== ci) ci.value = prefs.match.n;
+    document.querySelectorAll('#opts button[data-mode-play]').forEach(b => b.classList.toggle('on', b.dataset.modePlay === prefs.mode));
+    document.querySelectorAll('#opts button[data-cpu]').forEach(b => b.classList.toggle('on', b.dataset.cpu === prefs.cpu));
+    document.getElementById('cpuSec').classList.toggle('hidden', prefs.mode !== 'cpu');
+    document.getElementById('matchSec').classList.toggle('hidden', isGuest());   // the host picks the match format
+    document.getElementById('leaveBtn').classList.toggle('hidden', !(prefs.mode === 'online' && net.connected));
+    updateSummary();
+  }
+  // One line under the home-screen buttons saying what ▶ Play will start
+  function modeSummary() {
+    const parts = [t(MODE_NAMES[prefs.mode] || '2 Player')];
+    if (prefs.mode === 'cpu') parts.push(t({ easy: 'Easy', normal: 'Normal', hard: 'Hard', hardcore: 'Hardcore' }[prefs.cpu] || 'Normal'));
+    if (!isGuest()) parts.push(t(prefs.match.mode === 'best' ? 'Best of' : 'First to') + ' ' + prefs.match.n);
+    return parts.join(' · ');
+  }
+  function updateSummary() {
+    const el = document.getElementById('modeSummary');
+    if (el) el.textContent = (overlayKind === 'menu' || overlayKind === 'over') ? modeSummary() : '';
+  }
+  function applyStaticText() {
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      if (!el.dataset.src) el.dataset.src = el.textContent.trim();
+      el.textContent = t(el.dataset.src);
+    });
+  }
+
+  // ================= TOASTS + ACHIEVEMENTS =================
+  let toastTimer = null;
+  function toast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg; el.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+  }
+  function unlock(id) {
+    if (stats.ach[id]) return;
+    stats.ach[id] = Date.now(); saveStats();
+    const a = ACH.find(x => x[0] === id);
+    toast('🏆 ' + t(a[1]));
+    try {
+      if (typeof CONFIG.onAchievement === 'function') CONFIG.onAchievement(id);
+      window.dispatchEvent(new CustomEvent('pong:achievement', { detail: { id } }));
+    } catch (e) { /* ignore */ }
+  }
+  function recordMatch(w) {
+    const l = w === p1 ? p2 : p1;
+    stats.played++;
+    stats.matches.unshift({ d: Date.now(), a: NM('p1'), b: NM('p2'), s: [p1.score, p2.score], m: prefs.mode });
+    stats.matches.length = Math.min(stats.matches.length, 20);
+    const wn = NM(w.key); stats.wins[wn] = (stats.wins[wn] || 0) + 1;
+    saveStats();
+    unlock('first_match');
+    if (stats.played >= 10) unlock('ten_matches');
+    if (l.score === 0 && winTarget() >= 3) unlock('shutout');
+    if (match.deficit[w.key] >= 3) unlock('comeback');
+    if (prefs.mode === 'cpu' && w === p1) unlock('beat_' + prefs.cpu);
+    if (prefs.mode === 'online' && w.key === localKey()) unlock('online_win');
+  }
+
+  // ================= AUDIO =================
+  let actx = null;
+  function ensureAudio() {
+    try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); } catch (e) { actx = null; }
+    return actx;
+  }
+  function beep(freq, dur = 0.06, type = 'square', base = 0.09) {
+    if (prefs.muted) return;
+    const pk = PACKS[prefs.soundPack] || PACKS.retro;
+    const vol = base * pk.vol * (prefs.master / 100) * (prefs.sfx / 100);
+    if (vol < 0.0005 || !ensureAudio()) return;
+    try {
+      const f = freq * pk.mul, d = dur * pk.dur, now = actx.currentTime;
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = pk.type || type; o.frequency.setValueAtTime(f, now);
+      if (pk.sweep !== 1) o.frequency.exponentialRampToValueAtTime(f * pk.sweep, now + d);
+      g.gain.setValueAtTime(vol, now);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + d);
+      o.connect(g).connect(actx.destination);
+      o.start(now); o.stop(now + d);
+    } catch (e) { /* audio unavailable – play silently */ }
+  }
+
+  // Background music: a small chiptune loop generated live (no audio files)
+  const music = { timer: null, gain: null, step: 0, next: 0 };
+  const CHORDS = [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]];   // Am F C G
+  const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+  const musicVol = () => prefs.muted ? 0 : (prefs.master / 100) * (prefs.music / 100) * 0.5;
+  function musicNote(freq, at, dur, type, vol) {
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(vol, at + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    o.connect(g).connect(music.gain); o.start(at); o.stop(at + dur + 0.02);
+  }
+  function scheduleMusic() {
+    if (!actx) return;
+    const spb = 60 / 112 / 4;
+    if (music.next < actx.currentTime) music.next = actx.currentTime + 0.05;
+    while (music.next < actx.currentTime + 0.2) {
+      const s = music.step, ch = CHORDS[Math.floor(s / 16) % 4], at = music.next;
+      if (s % 4 === 0) musicNote(mtof(ch[0] - 24), at, spb * 3.5, 'triangle', 0.5);
+      if (s % 2 === 0) musicNote(mtof(ch[((s / 2) % 3) | 0] + 12), at, spb * 1.6, 'square', 0.1);
+      if (s % 8 === 4) musicNote(mtof(ch[2] + 24), at, spb * 0.8, 'sine', 0.06);
+      music.next += spb; music.step = (s + 1) % 64;
+    }
+  }
+  function stopMusic() { if (music.timer) { clearInterval(music.timer); music.timer = null; } }
+  function updateMusic() {
+    if (!actx) return;
+    const v = musicVol();
+    if (v <= 0.0001 || document.hidden) { stopMusic(); return; }
+    if (!music.gain) { music.gain = actx.createGain(); music.gain.connect(actx.destination); music.gain.gain.value = v; }
+    music.gain.gain.setTargetAtTime(v, actx.currentTime, 0.05);
+    if (!music.timer) { music.next = actx.currentTime + 0.1; music.timer = setInterval(scheduleMusic, 25); }
+  }
+
+  // iOS/Android only allow sound after a touch or key press: unlock on the first one, then start the music
+  function unlockAudio() {
+    if (!ensureAudio()) return;
+    try { const b = actx.createBuffer(1, 1, 22050), src = actx.createBufferSource(); src.buffer = b; src.connect(actx.destination); src.start(0); } catch (e) { /* no audio */ }
+    updateMusic();
+  }
+  ['pointerdown', 'keydown', 'touchend'].forEach(ev => window.addEventListener(ev, unlockAudio, { once: true, capture: true }));
+
+  // Vibration: native Haptics plugin in the app build, Vibration API on Android browsers, silent elsewhere
+  function haptic(kind) {
+    if (!prefs.haptics) return;
+    try {
+      const Hp = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Haptics;
+      if (Hp) { const pr = Hp.impact({ style: kind === 'heavy' ? 'HEAVY' : 'LIGHT' }); if (pr && pr.catch) pr.catch(() => {}); }
+      else if (navigator.vibrate && isTouch()) navigator.vibrate(kind === 'heavy' ? 40 : 12);
+    } catch (e) { /* ignore */ }
+  }
+
+  // Sound/feel events: played locally and, when hosting online, sent to the guest
+  function fx(code) {
+    if (isHost() && net.evq.length < 20) net.evq.push(code);
+    playFx(code);
+  }
+  function playFx(code) {
+    if (code === 'h1') beep(520); else if (code === 'h2') beep(440);
+    else if (code === 'w') beep(300, 0.03);
+    else if (code === 'p') { beep(200, 0.25, 'sawtooth', 0.07); haptic('heavy'); }
+    else if (code === 'v') { beep(660, 0.15); setTimeout(() => beep(880, 0.3), 160); }
+    else if (code === 'u') beep(880, 0.12, 'triangle');
+    else if (code === 'c') beep(660, 0.08, 'square', 0.07);
+    else if (code === 'g') beep(990, 0.14, 'square', 0.08);
+  }
+
+  // ================= GAME FLOW =================
+  function resetBall() {
+    balls.length = 1;
+    ball.x = W / 2 - BS() / 2; ball.y = H / 2 - BS() / 2;
+    ball.vx = ball.vy = 0; ball.speed = startSpeed(); ball.trail = []; ball.last = null;
+    pu = null; puTimer = 6 + Math.random() * 6; slowT = 0; p1.big = p2.big = 0;
+    match.rally = 0; match.cpuReturns = 0;
+    serveTimer = CONFIG.serveDelay; waitingServe = false; serveReq = false; state = STATE.SERVE;
+  }
+  function launchBall() {
+    const a = (Math.random() * 0.6 - 0.3) * Math.PI / 2;
+    ball.vx = Math.cos(a) * ball.speed * serveDir; ball.vy = Math.sin(a) * ball.speed;
+    waitingServe = false; state = STATE.PLAY;
+  }
+  function requestServe() { if (state === STATE.SERVE && waitingServe) serveReq = true; }
+  function newGame() {
+    p1.score = p2.score = 0;
+    p1.y = p2.y = (H - PH()) / 2;
+    winner = null; serveDir = Math.random() < 0.5 ? -1 : 1;
+    match.deficit.p1 = match.deficit.p2 = 0;
+    hideOverlay(); resetBall();
+  }
+  function point(scorer) {
+    scorer.score++;
+    flash = 0.25;
+    fx('p');
+    match.deficit.p1 = Math.max(match.deficit.p1, p2.score - p1.score);
+    match.deficit.p2 = Math.max(match.deficit.p2, p1.score - p2.score);
+    serveDir = scorer === p1 ? 1 : -1;
+    if (scorer.score >= winTarget()) {
+      winner = scorer; state = STATE.OVER; balls.length = 1; pu = null;
+      fx('v');
+      showOverlay('over');
+      recordMatch(scorer);
+    } else resetBall();
+    saveStats();
+  }
+
+  function showOverlay(kind) {
+    overlayKind = kind;
+    const h1 = overlay.querySelector('h1');
+    const playBtn = document.getElementById('playBtn'), modesBtn = document.getElementById('modesBtn'), homeBtn = document.getElementById('homeBtn');
+    disarmHome();
+    playBtn.textContent = '▶ ' + (kind === 'paused' ? t('Resume') : kind === 'over' ? (isGuest() ? t('Rematch') : t('Play again')) : t('Play'));
+    modesBtn.classList.toggle('hidden', kind === 'paused');
+    homeBtn.classList.toggle('hidden', kind === 'menu');
+    if (kind === 'over') {
+      h1.innerHTML = `<span class="${winner.key}">${esc(NM(winner.key))}</span><br>${esc(t('WINS {a}–{b}', { a: Math.max(p1.score, p2.score), b: Math.min(p1.score, p2.score) }))}`;
+      h1.style.fontSize = 'clamp(28px, 6vw, 64px)';
+      promptEl.textContent = isGuest() ? t('Press SPACE for a rematch') : t('Press SPACE to play again');
+    } else if (kind === 'paused') {
+      h1.textContent = t('PAUSED'); h1.style.fontSize = '';
+      promptEl.textContent = t('Press SPACE to resume');
+    } else {
+      h1.textContent = CONFIG.title; h1.style.fontSize = '';
+      promptEl.textContent = t('Press SPACE to start');
+    }
+    promptEl.classList.toggle('hidden', isTouch());     // touch players have the big ▶ button instead
+    devHooks.overlay(kind);
+    if (backLinkEl) backLinkEl.classList.toggle('hidden', kind !== 'menu');
+    if (inst.btn) inst.btn.classList.toggle('hidden', kind !== 'menu' || !installable());
+    if (kind === 'menu') setTimeout(maybeOfferInstall, 700);
+    updateSummary();
+    if (!modal) overlay.classList.remove('hidden');
+  }
+  function hideOverlay() { overlayKind = null; overlay.classList.add('hidden'); overlay.classList.remove('fade-in'); if (backLinkEl) backLinkEl.classList.add('hidden'); }
+
+  function showMenuAfterIntro() {
+    if (introMenuShown) return;
+    introMenuShown = true;
+    overlay.classList.add('fade-in');
+    showOverlay('menu');
+    gearBtn.classList.remove('hidden');
+  }
+  function endIntro() {
+    if (state !== STATE.INTRO) return;
+    showMenuAfterIntro();
+    state = STATE.MENU;
+  }
+  function toMenu() {
+    state = STATE.MENU; balls.length = 1; pu = null; p1.score = p2.score = 0; p1.big = p2.big = 0;
+    if (!modal) showOverlay('menu'); else overlayKind = 'menu';
+    applyVisuals();
+  }
+
+  function pause() {
+    if (isGuest()) { if (live()) relay({ k: 'pause' }); return; }
+    if (!live()) return;
+    if (state !== STATE.COUNTDOWN) pausedFrom = state;     // pausing mid-countdown keeps the original state
+    state = STATE.PAUSED; activePointers.clear(); p1.touchY = p2.touchY = null; showOverlay('paused');
+  }
+  function resume() {                       // un-pausing starts a visible 3-2-1 before play continues
+    if (isGuest()) { relay({ k: 'resume' }); return; }
+    if (state === STATE.PAUSED) { state = STATE.COUNTDOWN; countdownT = RESUME_COUNT; cdShown = 0; hideOverlay(); }
+  }
+  function togglePause() { state === STATE.PAUSED ? resume() : pause(); }
+
+  // ⌂ Home: from the pause menu it needs a second press (so a stray tap can't throw a match away);
+  // from the game-over screen it goes straight home. Online, going home leaves the online game.
+  let homeArmed = 0, homeTimer = null;
+  function disarmHome() {
+    homeArmed = 0; clearTimeout(homeTimer);
+    const b = document.getElementById('homeBtn'); b.classList.remove('armed'); b.textContent = '⌂ ' + t('Home');
+  }
+  function goHome() {
+    const now = performance.now();
+    if (state === STATE.PAUSED && !(homeArmed && now - homeArmed < 3000)) {
+      const b = document.getElementById('homeBtn');
+      homeArmed = now; b.classList.add('armed'); b.textContent = t('Quit match? Press again');
+      clearTimeout(homeTimer); homeTimer = setTimeout(disarmHome, 3000);
+      return;
+    }
+    disarmHome();
+    if (net.connected) netClose();
+    toMenu();
+  }
+
+  function openModes() { applyVisuals(); openModal('modes'); document.getElementById('modesDone').focus(); }
+  function closeModes(play) {
+    closeModal(); savePrefs(); showOverlay(overlayKind || 'menu');
+    if (play) primary();
+  }
+
+  // Start button / Space / tap: help → colour picker (first time) → online lobby → game
+  function startFlow() {
+    if (!prefs.coloursChosen) return openPicker();
+    if (prefs.mode === 'online') {
+      if (!net.connected) return openOnline();
+      if (net.role === 'guest') { relay({ k: 'again' }); return; }
+    }
+    newGame();
+  }
+  function primary() {
+    if (modal) return;
+    if (state === STATE.MENU || state === STATE.OVER) startFlow();
+    else if (state === STATE.PAUSED) resume();
+  }
+  function setMode(m) {
+    if (m !== 'online' && net.connected) netClose();
+    prefs.mode = m; savePrefs(); applyVisuals();
+  }
+
+  // ================= MODALS =================
+  function openModal(id) {
+    modal = id;
+    document.body.classList.add('panel-open');
+    overlay.classList.add('hidden');
+    gearBtn.classList.add('hidden');
+    if (backLinkEl) backLinkEl.classList.add('hidden');
+    document.getElementById(id).classList.remove('hidden');
+  }
+  function closeModal() {
+    if (!modal) return;
+    document.getElementById(modal).classList.add('hidden');
+    document.body.classList.remove('panel-open');
+    modal = null; gearBtn.classList.remove('hidden');
+  }
+
+  // ================= COLOUR WHEEL COMPONENT =================
+  function createColourEditor(host, opts) {
+    const size = opts.size || 170;
+    const box = document.createElement('div');
+    box.className = 'colourEditor';
+    box.innerHTML = `
+      ${opts.nameKey ? `<div class="edLabel" style="color:${opts.get()}" data-name="${opts.nameKey}"></div>` : ''}
+      <canvas class="wheel" tabindex="0" role="slider"
+        aria-label="${esc(opts.aria || 'Colour wheel')} (arrow keys: left/right hue, up/down saturation)"></canvas>
+      <label class="slider"><span>${esc(t('Brightness'))}</span><input type="range" min="5" max="100" step="1"><output></output></label>
+      <div class="hexRow"><span class="chip"></span><input class="hex" type="text" maxlength="7" spellcheck="false" aria-label="Hex colour code"></div>`;
+    host.appendChild(box);
+    const cv = box.querySelector('canvas'), bright = box.querySelector('input[type=range]'),
+          bout = box.querySelector('output'), hexIn = box.querySelector('.hex'),
+          chip = box.querySelector('.chip'), lab = box.querySelector('.edLabel');
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width = cv.height = Math.round(size * dpr);
+    cv.style.width = cv.style.height = size + 'px';
+    const wc = cv.getContext('2d'), N = cv.width, C = N / 2, R = N / 2 - 2 * dpr;
+    let h = 0, s = 0, v = 1, img = null, imgV = -1;
+
+    function buildImage() {
+      img = wc.createImageData(N, N);
+      const d = img.data;
+      for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+        const dx = x - C + 0.5, dy = y - C + 0.5, dist = Math.hypot(dx, dy), i = (y * N + x) * 4;
+        if (dist > R + 1) continue;
+        let hue = Math.atan2(dy, dx) * 180 / Math.PI; if (hue < 0) hue += 360;
+        const rgb = hsvToRgb(hue, Math.min(1, dist / R), v);
+        d[i] = rgb[0]; d[i + 1] = rgb[1]; d[i + 2] = rgb[2];
+        d[i + 3] = Math.max(0, Math.min(1, R + 1 - dist)) * 255;
+      }
+      imgV = v;
+    }
+    function render() {
+      if (imgV !== v) buildImage();
+      wc.putImageData(img, 0, 0);
+      const a = h * Math.PI / 180, mx = C + Math.cos(a) * s * R, my = C + Math.sin(a) * s * R;
+      wc.lineWidth = 3 * dpr; wc.strokeStyle = '#000'; wc.beginPath(); wc.arc(mx, my, 8 * dpr, 0, 7); wc.stroke();
+      wc.lineWidth = 1.5 * dpr; wc.strokeStyle = '#fff'; wc.beginPath(); wc.arc(mx, my, 8 * dpr, 0, 7); wc.stroke();
+      const hex = hsvToHex(h, s, v);
+      chip.style.background = hex;
+      if (lab) lab.style.color = hex;
+      if (document.activeElement !== hexIn) hexIn.value = hex;
+      bright.value = Math.round(v * 100); bout.textContent = Math.round(v * 100) + '%';
+      cv.setAttribute('aria-valuetext', hex);
+    }
+    function commit() { opts.set(hsvToHex(h, s, v)); render(); }
+    function pick(e) {
+      const r = cv.getBoundingClientRect();
+      const dx = (e.clientX - r.left) / r.width * N - C, dy = (e.clientY - r.top) / r.height * N - C;
+      h = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+      s = Math.min(1, Math.hypot(dx, dy) / R);
+      commit();
+    }
+    let dragging = false;
+    cv.addEventListener('pointerdown', e => { dragging = true; try { cv.setPointerCapture(e.pointerId); } catch (_) {} pick(e); e.preventDefault(); });
+    cv.addEventListener('pointermove', e => { if (dragging) pick(e); });
+    cv.addEventListener('pointerup', () => dragging = false);
+    cv.addEventListener('pointercancel', () => dragging = false);
+    cv.addEventListener('keydown', e => {
+      if (e.key === 'ArrowLeft') h = (h + 355) % 360; else if (e.key === 'ArrowRight') h = (h + 5) % 360;
+      else if (e.key === 'ArrowUp') s = Math.min(1, s + 0.05); else if (e.key === 'ArrowDown') s = Math.max(0, s - 0.05);
+      else return;
+      e.preventDefault(); commit();
+    });
+    bright.addEventListener('input', () => { v = bright.value / 100; commit(); });
+    hexIn.addEventListener('input', () => {
+      const m = /^#?([0-9a-f]{6})$/i.exec(hexIn.value.trim());
+      if (m) { const hex = '#' + m[1].toLowerCase(); [h, s, v] = rgbToHsv(...hexToRgb(hex)); opts.set(hex); render(); }
+    });
+    hexIn.addEventListener('blur', render);
+    function sync() { [h, s, v] = rgbToHsv(...hexToRgb(opts.get())); render(); }
+    sync();
+    return { sync, setAria: tx => cv.setAttribute('aria-label', tx + ' (arrow keys: left/right hue, up/down saturation)') };
+  }
+
+  // ================= FIRST-RUN COLOUR PICKER (+ short how-to) =================
+  const pickerEl = document.getElementById('picker');
+  const pickerEditors = ['p1', 'p2'].map(k => createColourEditor(document.getElementById('pickerWheels'), {
+    nameKey: k, aria: NM(k) + ' colour', size: 150,
+    get: () => prefs.colors[k],
+    set: hex => { prefs.colors[k] = hex; prefs.theme = 'custom'; applyVisuals(); updateWarnings(); },
+  }));
+  function renderHowto() {
+    const ctl = isTouch() ? (prefs.mode === 'local' ? t('Drag up and down on your side of the screen.') : t('Drag up and down anywhere to move your paddle.'))
+      : (prefs.mode === 'local' ? t('Player 1: W / S. Player 2: ↑ / ↓.') : t('Move with W / S or ↑ / ↓.'));
+    document.getElementById('pickerHowto').innerHTML = [t('Keep the ball in play. If it gets past you, your opponent scores.'), ctl,
+      t('Space or ❚❚ pauses. ⚙ opens settings.')].map(x => `<li>${esc(x)}</li>`).join('');
+  }
+  function openPicker() {
+    openModal('picker');
+    pickerEditors.forEach(e => e.sync());
+    renderHowto(); updateWarnings(); applyVisuals();
+    pickerEl.querySelector('canvas.wheel').focus();
+  }
+  function closePicker(start) {
+    closeModal();
+    if (start) { prefs.coloursChosen = true; savePrefs(); startFlow(); }
+    else showOverlay(overlayKind || 'menu');
+  }
+  document.getElementById('pickerStart').addEventListener('click', () => closePicker(true));
+  document.getElementById('pickerSkip').addEventListener('click', () => {
+    prefs.colors.p1 = DEFAULTS.colors.p1; prefs.colors.p2 = DEFAULTS.colors.p2; applyVisuals(); closePicker(true);
+  });
+
+  // ================= HOW TO PLAY =================
+  function renderHelp() {
+    const li = arr => `<ul class="howto">${arr.map(x => `<li>${esc(t(x))}</li>`).join('')}</ul>`;
+    document.getElementById('helpBody').innerHTML =
+      `<h3>${esc(t('Goal'))}</h3><p class="sub">${esc(t('Hit the ball back with your paddle. If it gets past you, your opponent scores. First to the winning score wins.'))}</p>` +
+      `<h3>${esc(t('Controls'))}</h3>` + li([
+        'Keyboard: Player 1 uses W / S, Player 2 uses ↑ / ↓. Against the computer or online, either works.',
+        'Touch: drag up and down on your half of the screen (anywhere when you play alone or online).',
+        'Controller: left stick or D-pad moves, A serves, Start pauses.',
+        'Space, P or ❚❚ pauses. Esc or ⚙ opens settings.',
+        'In the pause menu, ⌂ Home (H, or Back on a controller) returns to the home screen. Press it twice to quit the match.']) +
+      `<h3>${esc(t('Modes'))}</h3>` + li([
+        'Choose a mode in Game modes on the home screen (or press G).',
+        '2 Player: two players share one screen or keyboard.',
+        'vs Computer: play alone on Easy, Normal, Hard or Hardcore. On Hardcore the computer cannot miss until it has returned the ball 10 times in a rally.',
+        'Online: one player hosts and shares a 4-letter code, the other joins on their own device.']) +
+      `<h3>${esc(t('Tips'))}</h3>` + li([
+        'Hit the ball with the end of your paddle for a steeper angle.',
+        'Turn on power-ups in Settings → Gameplay for bigger paddles, extra balls and slow motion.']);
+  }
+  function openHelp() { pause(); renderHelp(); openModal('help'); document.getElementById('helpOk').focus(); }
+  function closeHelp() { closeModal(); showOverlay(overlayKind || (state === STATE.PAUSED ? 'paused' : 'menu')); }
+  document.getElementById('helpOk').addEventListener('click', closeHelp);
+  document.getElementById('helpBtn').addEventListener('click', e => { e.stopPropagation(); openHelp(); });
+
+  // ================= BACKGROUND IMAGE (stored on this device, works offline) =================
+  let bgImg = null, bgAvg = null;
+  const bgNote = tx => { const n = document.getElementById('bgNote'); if (n) n.textContent = tx; };
+  function idbOpen() {
+    return new Promise((res, rej) => {
+      try {
+        const r = indexedDB.open('pong-media', 1);
+        r.onupgradeneeded = () => r.result.createObjectStore('files');
+        r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+      } catch (e) { rej(e); }
+    });
+  }
+  async function idbDo(mode, fn) {
+    const db = await idbOpen();
+    return new Promise((res, rej) => {
+      const tx = db.transaction('files', mode), req = fn(tx.objectStore('files'));
+      tx.oncomplete = () => res(req && req.result); tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error);
+    });
+  }
+  const idbPut = blob => idbDo('readwrite', st => st.put(blob, 'bg'));
+  const idbGet = () => idbDo('readonly', st => st.get('bg'));
+  const idbDel = () => idbDo('readwrite', st => st.delete('bg'));
+  function loadImage(src) {
+    return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+  }
+  function averageColour(img) {
+    try {
+      const cv = document.createElement('canvas'); cv.width = cv.height = 8;
+      const c2 = cv.getContext('2d'); c2.drawImage(img, 0, 0, 8, 8);
+      const d = c2.getImageData(0, 0, 8, 8).data; let r = 0, g = 0, b = 0;
+      for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
+      const n = d.length / 4; return rgbToHex(r / n, g / n, b / n);
+    } catch (e) { return '#808080'; }
+  }
+  function effectiveBg() { return bgImg ? mix(bgAvg, prefs.colors.bg, prefs.visual.bgDim / 100) : prefs.colors.bg; }
+  function refreshBgUi() { const rb = document.getElementById('bgRemove'); if (rb) rb.classList.toggle('hidden', !bgImg); }
+  async function useBgBlob(blob, persist) {
+    const url = URL.createObjectURL(blob);
+    const img = await loadImage(url);
+    bgImg = img; bgAvg = averageColour(img);
+    if (persist) {
+      try { await idbPut(blob); bgNote(t('Saved on this device. It works offline.')); }
+      catch (e) { bgNote(t("Couldn't save the image on this device, so it will only be used until the game is closed.")); }
+    }
+    refreshBgUi(); updateWarnings();
+  }
+  async function handleBgFile(file) {
+    if (!file) return;
+    if (!/^image\//.test(file.type || 'image/')) { bgNote(t('Please choose an image file.')); return; }
+    bgNote(t('Loading image…'));
+    try {
+      const src = URL.createObjectURL(file), img = await loadImage(src);
+      const k = Math.min(1, 1920 / Math.max(img.naturalWidth, img.naturalHeight));   // keep storage small
+      const cv = document.createElement('canvas');
+      cv.width = Math.round(img.naturalWidth * k); cv.height = Math.round(img.naturalHeight * k);
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      URL.revokeObjectURL(src);
+      const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.85));
+      await useBgBlob(blob || file, true);
+    } catch (e) { bgNote(t("That image couldn't be opened. Try a JPG or PNG.")); }
+  }
+  function removeBg() {
+    bgImg = null; bgAvg = null; refreshBgUi(); updateWarnings(); bgNote('');
+    idbDel().catch(() => {});
+  }
+  document.getElementById('bgFile').addEventListener('change', e => { handleBgFile(e.target.files[0]); e.target.value = ''; });
+  document.getElementById('bgRemove').addEventListener('click', removeBg);
+  idbGet().then(b => b && useBgBlob(b, false)).catch(() => {});
+
+  // ================= SETTINGS PANEL =================
+  const settingsEl = document.getElementById('settings');
+  const refreshers = [];
+
+  function buildControls(sectionName) {
+    const host = settingsEl.querySelector(`[data-controls="${sectionName}"]`);
+    CONTROLS[sectionName].forEach(c => {
+      const label = fmtLabel(c.label);
+      const id = 'set-' + c.path.replace(/\./g, '-');
+      const row = document.createElement('div');
+      if (c.options) {
+        row.className = 'field seg';
+        row.innerHTML = `<span>${label}</span><div class="segs" role="group"></div>`;
+        const segs = row.querySelector('.segs');
+        c.options.forEach(([val, text]) => {
+          const b = document.createElement('button');
+          b.textContent = /^[A-Z]/.test(text) && c.path !== 'lang' ? t(text) : text;
+          b.addEventListener('click', () => {
+            onChange(c.path, val); refresh();
+            if (c.test) beep(520, 0.12);
+            if (c.reload) { savePrefs(); location.reload(); }
+          });
+          segs.appendChild(b);
+        });
+        const refresh = () => [...segs.children].forEach((b, i) => {
+          const on = c.options[i][0] === getPath(c.path);
+          b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
+        });
+        refreshers.push(refresh);
+      } else if (c.text) {
+        row.className = 'field txt';
+        row.innerHTML = `<label for="${id}">${label}</label><input id="${id}" class="upper" type="text" maxlength="12" spellcheck="false" autocomplete="off">`;
+        const input = row.querySelector('input');
+        input.addEventListener('input', () => onChange(c.path, cleanName(input.value)));
+        refreshers.push(() => { if (document.activeElement !== input) input.value = getPath(c.path); });
+      } else {
+        row.className = 'field';
+        row.innerHTML = `<label for="${id}">${label}</label>
+          <input id="${id}" type="range" min="${c.min}" max="${c.max}" step="${c.step}"><output for="${id}"></output>`;
+        const input = row.querySelector('input'), out = row.querySelector('output');
+        input.addEventListener('input', () => { onChange(c.path, +input.value); out.textContent = c.fmt(+input.value); });
+        if (c.test) input.addEventListener('change', () => beep(520, 0.12));
+        refreshers.push(() => { input.value = getPath(c.path); out.textContent = c.fmt(getPath(c.path)); });
+      }
+      host.appendChild(row);
+    });
+  }
+
+  function onChange(path, val) {
+    setPath(path, val);
+    if (path === 'match.n') nCustomOn = false;
+    if (path.startsWith('visual.')) prefs.theme = 'custom';
+    applyVisuals(); updateWarnings(); refreshThemes(); updateMusic(); savePrefs();
+  }
+
+  // Theme presets
+  const themeList = document.getElementById('themeList');
+  Object.entries(THEMES).forEach(([key, th]) => {
+    const b = document.createElement('button');
+    b.dataset.theme = key;
+    b.innerHTML = `${esc(t(th.name))}<span class="sw">${['bg', 'p1', 'p2', 'ball'].map(k => `<i style="background:${th.colors[k]};outline:1px solid #ffffff22"></i>`).join('')}</span>`;
+    b.addEventListener('click', () => {
+      Object.assign(prefs.colors, th.colors);
+      Object.assign(prefs.visual, th.visual);
+      prefs.theme = key;
+      applyVisuals(); updateWarnings(); refreshAll(); savePrefs();
+    });
+    themeList.appendChild(b);
+  });
+  function refreshThemes() { themeList.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.theme === prefs.theme)); }
+
+  // Colour targets + single wheel
+  let colourTarget = 'p1';
+  const targetsEl = document.getElementById('colourTargets');
+  COLOUR_TARGETS.forEach(([key, label]) => {
+    const b = document.createElement('button');
+    b.dataset.target = key;
+    b.innerHTML = `<span class="dot"></span>${fmtLabel(label)}`;
+    b.addEventListener('click', () => { colourTarget = key; refreshTargets(); settingsEditor.setAria(b.textContent + ' colour'); settingsEditor.sync(); });
+    targetsEl.appendChild(b);
+  });
+  function refreshTargets() {
+    targetsEl.querySelectorAll('button').forEach(b => {
+      b.classList.toggle('on', b.dataset.target === colourTarget);
+      b.querySelector('.dot').style.background = prefs.colors[b.dataset.target];
+    });
+  }
+  const settingsEditor = createColourEditor(document.getElementById('settingsWheel'), {
+    aria: NM('p1') + ' paddle colour', size: 180,
+    get: () => prefs.colors[colourTarget],
+    set: hex => { prefs.colors[colourTarget] = hex; prefs.theme = 'custom'; applyVisuals(); updateWarnings(); refreshTargets(); refreshThemes(); savePrefs(); },
+  });
+
+  // Contrast / similarity warnings (accessibility)
+  function updateWarnings() {
+    const c = prefs.colors, msgs = [];
+    [['p1', t('{name} paddle', { name: NM('p1') })], ['p2', t('{name} paddle', { name: NM('p2') })], ['ball', t('Ball')]].forEach(([k, n]) => {
+      const r = contrast(c[k], effectiveBg());
+      if (r < 3) msgs.push('⚠ ' + t('{name} is hard to see against the background (contrast {r}:1, aim for 3:1 or more).', { name: n, r: r.toFixed(1) }));
+    });
+    if (colourDistance(c.p1, c.p2) < 60) msgs.push('ℹ ' + t('Both players have very similar colours. Players can still tell their paddles apart by side.'));
+    document.getElementById('contrastWarn').textContent = msgs.join(' ');
+    document.getElementById('pickerWarn').textContent = msgs.join(' ');
+  }
+
+  // Stats tab
+  function renderStats() {
+    const s = stats;
+    const wins = Object.entries(s.wins).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    const none = `<p class="sub">${esc(t('No matches yet.'))}</p>`;
+    document.getElementById('statsBody').innerHTML =
+      `<h3>${esc(t('Summary'))}</h3><table>
+        <tr><td>${esc(t('Matches played'))}</td><td>${s.played}</td></tr>
+        <tr><td>${esc(t('Longest rally'))}</td><td>${s.longestRally}</td></tr>
+        <tr><td>${esc(t('Fastest ball'))}</td><td>${(s.topSpeed / CONFIG.ballStartSpeed).toFixed(2)}×</td></tr>
+        <tr><td>${esc(t('Power-ups collected'))}</td><td>${s.powerups}</td></tr></table>` +
+      `<h3>${esc(t('Wins'))}</h3>` + (wins.length ? `<table>${wins.map(([n, w]) => `<tr><td>${esc(n)}</td><td>${w}</td></tr>`).join('')}</table>` : none) +
+      `<h3>${esc(t('Recent matches'))}</h3>` + (s.matches.length ? `<table>${s.matches.slice(0, 8).map(m =>
+        `<tr><td>${esc(new Date(m.d).toLocaleDateString(LANG))}</td><td>${esc(m.a)} ${m.s[0]}–${m.s[1]} ${esc(m.b)}</td><td>${esc(t(MODE_NAMES[m.m] || ''))}</td></tr>`).join('')}</table>` : none) +
+      `<h3>${esc(t('Achievements'))} (${Object.keys(s.ach).length}/${ACH.length})</h3><div class="ach">${ACH.map(([id, n, d]) =>
+        `<div class="${s.ach[id] ? 'got' : ''}">${s.ach[id] ? '🏆' : '🔒'} <b>${esc(t(n))}</b><br>${esc(t(d))}</div>`).join('')}</div>`;
+  }
+  document.getElementById('clearStats').addEventListener('click', () => { stats = clone(DEFAULT_STATS); saveStats(); renderStats(); });
+
+  // Tabs
+  const tabBtns = settingsEl.querySelectorAll('.tabs button');
+  tabBtns.forEach(b => b.addEventListener('click', () => {
+    tabBtns.forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-selected', x === b); });
+    settingsEl.querySelectorAll('section').forEach(s => s.classList.toggle('hidden', s.dataset.section !== b.dataset.tab));
+    if (b.dataset.tab === 'colours') settingsEditor.sync();
+    if (b.dataset.tab === 'stats') renderStats();
+  }));
+
+  ['sound', 'display', 'gameplay', 'bgimage', 'players'].forEach(buildControls);
+
+  function refreshAll() { refreshers.forEach(f => f()); refreshThemes(); refreshTargets(); settingsEditor.sync(); updateWarnings(); }
+
+  function openSettings() {
+    if (modal) return;
+    pause();
+    openModal('settings');
+    refreshAll();
+    document.getElementById('closeSettings').focus();
+  }
+  function closeSettings() {
+    closeModal();
+    savePrefs();
+    showOverlay(overlayKind || (state === STATE.PAUSED ? 'paused' : 'menu'));
+  }
+  document.getElementById('closeSettings').addEventListener('click', closeSettings);
+  gearBtn.addEventListener('click', e => { e.stopPropagation(); openSettings(); });
+  pauseBtn.addEventListener('click', e => { e.stopPropagation(); pause(); });
+  document.getElementById('resetBtn').addEventListener('click', () => {
+    const keep = { coloursChosen: prefs.coloursChosen, lang: prefs.lang, mode: prefs.mode, names: prefs.names };
+    prefs = Object.assign(clone(DEFAULTS), keep);
+    removeBg();
+    applyVisuals(); refreshAll(); updateMusic(); savePrefs();
+  });
+
+  // home screen + game modes buttons
+  // Phones in a browser: full screen + landscape when a game starts (needs the tap, so it's done from the Play buttons)
+  function phoneFullscreen() {
+    if (!CONFIG.fullscreenOnPlay || !isTouch() || window.Capacitor || document.fullscreenElement) return;
+    const el = document.documentElement;
+    try {
+      if (!el.requestFullscreen) return;
+      el.requestFullscreen({ navigationUI: 'hide' }).then(() => {
+        if (screen.orientation && screen.orientation.lock) return screen.orientation.lock('landscape');
+      }).catch(() => {});
+    } catch (e) { /* not supported (e.g. iPhone) */ }
+  }
+  document.getElementById('playBtn').addEventListener('click', ev => { ev.stopPropagation(); phoneFullscreen(); primary(); });
+  document.getElementById('modesBtn').addEventListener('click', ev => { ev.stopPropagation(); openModes(); });
+  document.getElementById('homeBtn').addEventListener('click', ev => { ev.stopPropagation(); goHome(); });
+  document.getElementById('modesDone').addEventListener('click', () => closeModes(false));
+  document.getElementById('modesPlay').addEventListener('click', () => { phoneFullscreen(); closeModes(true); });
+  document.querySelectorAll('#opts button[data-mode]').forEach(b => b.addEventListener('click', ev => {
+    ev.stopPropagation(); prefs.match.mode = b.dataset.mode; applyVisuals();
+  }));
+  // Points to win: 3 / 5 / 10, or Custom (any whole number from 1 to 100)
+  document.querySelectorAll('#pointsRow button[data-n]').forEach(b => b.addEventListener('click', ev => {
+    ev.stopPropagation(); nCustomOn = false; prefs.match.n = +b.dataset.n; applyVisuals();
+  }));
+  const nCustom = document.getElementById('nCustom');
+  document.getElementById('nCustomBtn').addEventListener('click', ev => {
+    ev.stopPropagation(); nCustomOn = true; applyVisuals(); nCustom.focus(); nCustom.select();
+  });
+  nCustom.addEventListener('input', () => { const v = parseInt(nCustom.value, 10); if (v >= 1 && v <= 100) prefs.match.n = v; applyVisuals(); });
+  nCustom.addEventListener('change', () => { prefs.match.n = clampPoints(nCustom.value); nCustom.value = prefs.match.n; applyVisuals(); });
+  nCustom.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); nCustom.blur(); } });
+  document.querySelectorAll('#opts button[data-mode-play]').forEach(b => b.addEventListener('click', ev => {
+    ev.stopPropagation(); setMode(b.dataset.modePlay);
+  }));
+  document.getElementById('leaveBtn').addEventListener('click', ev => { ev.stopPropagation(); netClose(); toMenu(); applyVisuals(); });
+  document.querySelectorAll('#opts button[data-cpu]').forEach(b => b.addEventListener('click', ev => {
+    ev.stopPropagation(); prefs.cpu = b.dataset.cpu; savePrefs(); applyVisuals();
+  }));
+
+  // ================= ONLINE (host / join through a relay server) =================
+  const onStatus = tx => { document.getElementById('onStatus').textContent = tx; };
+  const serverUrl = () => (prefs.onlineServer || CONFIG.onlineServer || '').trim();
+  const r1 = v => Math.round(v * 10) / 10;
+  function openOnline() {
+    openModal('online');
+    document.getElementById('onStart').classList.remove('hidden');
+    document.getElementById('onWait').classList.add('hidden');
+    document.getElementById('serverUrl').value = serverUrl();
+    document.querySelector('#online details').open = !serverUrl();      // show the address box when none is set
+    onStatus(serverUrl() ? '' : t("Online play isn't set up yet: add a server address below."));
+  }
+  function closeOnline(cancel) {
+    if (cancel && !net.connected) netClose();
+    closeModal();
+    if (!net.connected) showOverlay(overlayKind || 'menu');
+  }
+  document.getElementById('onlineClose').addEventListener('click', () => closeOnline(true));
+  document.getElementById('serverUrl').addEventListener('input', e => { prefs.onlineServer = e.target.value.trim(); savePrefs(); });
+  document.getElementById('hostBtn').addEventListener('click', () => hostGame());
+  document.getElementById('joinBtn').addEventListener('click', () => joinGame(document.getElementById('joinCode').value));
+  document.getElementById('joinCode').addEventListener('keydown', e => { if (e.key === 'Enter') joinGame(e.target.value); });
+
+  function netOpen() {
+    return new Promise((res, rej) => {
+      const url = serverUrl();
+      if (!/^wss?:\/\//i.test(url)) return rej(new Error('noserver'));
+      if (net.ws) netClose();
+      let ws;
+      try { ws = new WebSocket(url); } catch (e) { return rej(e); }
+      const to = setTimeout(() => { try { ws.close(); } catch (e) { /* */ } rej(new Error('timeout')); }, 8000);
+      ws.onopen = () => { clearTimeout(to); net.ws = ws; res(ws); };
+      ws.onerror = () => { clearTimeout(to); rej(new Error('connect')); };
+      ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch (_) { return; } netMsg(m); };
+      ws.onclose = () => { if (net.ws === ws) netClosed(); };
+    });
+  }
+  const netSend = o => { if (net.ws && net.ws.readyState === 1) net.ws.send(JSON.stringify(o)); };
+  const relay = d => netSend({ t: 'relay', d });
+  const netErr = e => e && e.message === 'noserver' ? t("Online play isn't set up yet: add a server address below.")
+    : t("Couldn't reach the server. Check your connection and try again.");
+  async function hostGame() {
+    onStatus(t('Connecting…'));
+    try { await netOpen(); net.role = 'host'; netSend({ t: 'create' }); } catch (e) { onStatus(netErr(e)); }
+  }
+  async function joinGame(code) {
+    code = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (code.length !== 4) { onStatus(t('Enter the 4-character code.')); return; }
+    onStatus(t('Connecting…'));
+    try { await netOpen(); net.role = 'guest'; netSend({ t: 'join', code }); } catch (e) { onStatus(netErr(e)); }
+  }
+  function netMsg(m) {
+    if (m.t === 'created') {
+      net.code = m.code; onStatus('');
+      document.getElementById('roomCode').textContent = m.code;
+      document.getElementById('onStart').classList.add('hidden');
+      document.getElementById('onWait').classList.remove('hidden');
+    } else if (m.t === 'error') {
+      onStatus(m.e === 'nosuchroom' ? t('No game with that code.') : m.e === 'full' ? t('That game is already full.') : t('Something went wrong. Try again.'));
+      netClose();
+    } else if (m.t === 'joined' || m.t === 'peer-joined') {
+      net.connected = true; prefs.mode = 'online';
+      relay({ k: 'hello', name: prefs.names.p1 || t(CONFIG.names.p1) });
+      if (modal === 'online') closeModal();
+      applyVisuals(); toast(t('Connected!'));
+      if (net.role === 'host') newGame(); else { hideOverlay(); state = STATE.SERVE; }
+    } else if (m.t === 'peer-left') {
+      toast(t('Your opponent left the game.')); netClose(); toMenu();
+    } else if (m.t === 'relay' && m.d && typeof m.d === 'object') netData(m.d);
+  }
+  function netData(d) {
+    if (d.k === 'hello') { net.peerName = cleanName(d.name) || t('OPPONENT'); applyVisuals(); }
+    else if (d.k === 'in' && net.role === 'host') { if (typeof d.y === 'number' && isFinite(d.y)) net.remoteY = Math.max(0, Math.min(H, d.y)); }
+    else if (d.k === 'st' && net.role === 'guest') applyNetState(d);
+    else if (d.k === 'pause' && net.role === 'host') pause();
+    else if (d.k === 'resume' && net.role === 'host') resume();
+    else if (d.k === 'again' && net.role === 'host' && (state === STATE.OVER || state === STATE.MENU)) newGame();
+  }
+  function applyNetState(d) {
+    if (!Array.isArray(d.b) || !Array.isArray(d.p)) return;
+    net.st = d; net.stAt = performance.now();
+    net.geo = Array.isArray(d.g) ? d.g : null; net.match = d.m ? { mode: d.m[0], n: d.m[1] } : null;
+    p1.y = d.p[0]; p1.score = d.s[0]; p2.score = d.s[1];
+    p1.big = d.big && d.big[0] ? 1 : 0; p2.big = d.big && d.big[1] ? 1 : 0;
+    balls.length = Math.max(1, Math.min(3, d.b.length));
+    d.b.slice(0, 3).forEach((a, i) => { const b = balls[i] || (balls[i] = mkBall()); b.x = a[0]; b.y = a[1]; b.vx = a[2]; b.vy = a[3]; });
+    pu = d.pu ? { x: d.pu[0], y: d.pu[1], kind: d.pu[2], t: pu ? pu.t : 0 } : null;
+    slowT = d.sl ? 1 : 0; waitingServe = !!d.wait; countdownT = +d.cd || 0;
+    (d.ev || []).slice(0, 20).forEach(playFx);
+    if (d.st !== state && Object.values(STATE).includes(d.st)) {
+      const prev = state; state = d.st;
+      if (state === STATE.OVER) { winner = d.w === 'p2' ? p2 : p1; showOverlay('over'); recordMatch(winner); }
+      else if (state === STATE.PAUSED) { if (!modal) showOverlay('paused'); }
+      else if (live()) { if (prev === STATE.OVER) balls.forEach(b => b.trail = []); if (!modal) hideOverlay(); }
+    }
+  }
+  function netTick(dt) {
+    if (!net.connected) return;
+    net.sendT -= dt;
+    if (net.sendT > 0) return;
+    net.sendT = 1 / 30;
+    if (net.role === 'host') {
+      relay({ k: 'st', st: state, p: [r1(p1.y), r1(p2.y)], s: [p1.score, p2.score], w: winner ? winner.key : null,
+        b: balls.map(b => [r1(b.x), r1(b.y), r1(b.vx), r1(b.vy)]), big: [p1.big > 0 ? 1 : 0, p2.big > 0 ? 1 : 0],
+        pu: pu ? [r1(pu.x), r1(pu.y), pu.kind] : null, sl: slowT > 0 ? 1 : 0, g: [PH(), PW(), BS()],
+        m: [prefs.match.mode, prefs.match.n], wait: waitingServe ? 1 : 0, cd: state === STATE.COUNTDOWN ? r1(countdownT) : 0, ev: net.evq.splice(0) });
+    } else relay({ k: 'in', y: r1(p2.y) });
+  }
+  function netClose() {
+    const ws = net.ws;
+    Object.assign(net, { ws: null, role: null, connected: false, code: '', peerName: '', remoteY: null, st: null, geo: null, match: null, evq: [] });
+    if (ws) try { ws.close(); } catch (e) { /* */ }
+    applyVisuals();
+  }
+  function netClosed() {
+    const was = net.connected;
+    net.ws = null; netClose();
+    if (was) { toast(t('Connection lost.')); toMenu(); }
+    else if (modal === 'online') onStatus(t("Couldn't reach the server. Check your connection and try again."));
+  }
+
+  // ================= INPUT: KEYBOARD =================
+  const keys = new Set();
+  const GAME_KEYS = ['w', 's', 'arrowup', 'arrowdown', ' ', 'p', 'm', 'r', 'h', 'g'];
+  window.addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    if (state === STATE.INTRO) { e.preventDefault(); endIntro(); return; }   // any key skips the intro
+    if (k === 'escape') {
+      e.preventDefault();
+      if (modal === 'settings') closeSettings();
+      else if (modal === 'picker') closePicker(false);
+      else if (modal === 'help') closeHelp();
+      else if (modal === 'online') closeOnline(true);
+      else if (modal === 'modes') closeModes(false);
+      else if (modal === 'devLayer') devHooks.escape();
+      else if (modal === 'install') closeInstall();
+      else openSettings();
+      return;
+    }
+    if (modal) return;                     // let panel controls use the keyboard
+    if (GAME_KEYS.includes(k)) e.preventDefault();
+    if (e.repeat && !['w', 's', 'arrowup', 'arrowdown'].includes(k)) return;
+    keys.add(k);
+    if (k === ' ') {
+      if (state === STATE.SERVE && waitingServe) requestServe();
+      else if (live()) pause();
+      else primary();
+    }
+    if (k === 'p') togglePause();
+    if (k === 'h' && (state === STATE.PAUSED || state === STATE.OVER)) goHome();
+    if (k === 'g' && (state === STATE.MENU || state === STATE.OVER)) openModes();
+    if (k === 'm') { prefs.muted = !prefs.muted; savePrefs(); updateMusic(); }
+    if (k === 'r' && state !== STATE.MENU && !isGuest()) newGame();
+  });
+  window.addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+  window.addEventListener('blur', () => { keys.clear(); pause(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { keys.clear(); pause(); stopMusic(); } else updateMusic(); });
+
+  function keyDir(p) {
+    const has = k => keys.has(k);
+    if (singleControl()) {
+      if (p.key !== localKey()) return 0;
+      return ((has('s') || has('arrowdown')) ? 1 : 0) - ((has('w') || has('arrowup')) ? 1 : 0);
+    }
+    return p === p1 ? (has('s') ? 1 : 0) - (has('w') ? 1 : 0) : (has('arrowdown') ? 1 : 0) - (has('arrowup') ? 1 : 0);
+  }
+
+  // ================= INPUT: GAME CONTROLLERS =================
+  const padAxis = { p1: 0, p2: 0 }, padPrev = [];
+  function pollPads() {
+    padAxis.p1 = padAxis.p2 = 0;
+    let pads = [];
+    try { pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : []; } catch (e) { return; }
+    pads.slice(0, 2).forEach((gp, i) => {
+      let a = gp.axes[1] || 0;
+      if (Math.abs(a) < 0.2) a = 0;
+      if (gp.buttons[12] && gp.buttons[12].pressed) a = -1;
+      if (gp.buttons[13] && gp.buttons[13].pressed) a = 1;
+      const who = singleControl() ? localKey() : (i === 0 ? 'p1' : 'p2');
+      if (a) padAxis[who] = a;
+      const prev = padPrev[i] || [];
+      const pressed = j => gp.buttons[j] && gp.buttons[j].pressed && !prev[j];
+      if (!modal) {
+        if (pressed(9)) { if (live()) pause(); else if (state === STATE.INTRO) endIntro(); else primary(); }
+        if (pressed(8) && (state === STATE.PAUSED || state === STATE.OVER)) goHome();   // Back / Select / View
+        if (pressed(0)) { if (state === STATE.SERVE && waitingServe) requestServe(); else if (state === STATE.INTRO) endIntro(); else if (!live()) primary(); }
+      }
+      padPrev[i] = gp.buttons.map(b => b.pressed);
+    });
+  }
+
+  // ================= INPUT: TOUCH / POINTER =================
+  const activePointers = new Map();
+  const toGameY = clientY => (clientY - canvas.getBoundingClientRect().top) / scale;
+  const pointerTarget = clientX => {
+    if (singleControl()) return P(localKey());
+    const r = canvas.getBoundingClientRect(); return (clientX - r.left) < r.width / 2 ? p1 : p2;
+  };
+  window.addEventListener('pointerdown', e => {
+    if (state === STATE.INTRO) { endIntro(); return; }                     // tap skips the intro
+    if (modal || e.target.closest('.modal, #menuBtns, #gearBtn, #pauseBtn, #helpBtn')) return;
+    if (!live()) return;                     // menus start/resume only from their buttons or Space, not a tap anywhere
+    requestServe();
+    if (e.pointerType === 'mouse') return;   // mouse users play with the keyboard
+    const pl = pointerTarget(e.clientX);
+    activePointers.set(e.pointerId, pl); pl.touchY = toGameY(e.clientY);
+  });
+  window.addEventListener('pointermove', e => { const pl = activePointers.get(e.pointerId); if (pl) pl.touchY = toGameY(e.clientY); });
+  const endPointer = e => { const pl = activePointers.get(e.pointerId); if (pl) { pl.touchY = null; activePointers.delete(e.pointerId); } };
+  window.addEventListener('pointerup', endPointer);
+  window.addEventListener('pointercancel', endPointer);
+
+  // ================= COMPUTER PLAYER =================
+  const ai = { t: 0, target: H / 2, err: 0 };
+  function predictY(b, toX) {
+    if (!b.vx) return null;
+    const time = (toX - b.x) / b.vx;
+    if (time < 0) return null;
+    const span = H - BS();
+    let y = b.y + b.vy * time;
+    y = ((y % (2 * span)) + 2 * span) % (2 * span);
+    if (y > span) y = 2 * span - y;
+    return y + BS() / 2;
+  }
+  function aiMove(p, dt) {
+    const cfg = shieldUp() ? HC_SHIELD : (AI[prefs.cpu] || AI.normal);
+    ai.t -= dt;
+    if (ai.t <= 0) {
+      ai.t = cfg.react;
+      let target = H / 2;
+      const toward = balls.filter(b => b.vx > 0);
+      if (state === STATE.PLAY && toward.length) {
+        const b = toward.reduce((a, c) => (c.x > a.x ? c : a));
+        const py = prefs.cpu === 'easy' ? b.y + BS() / 2 : predictY(b, p.x - BS());
+        target = py == null ? H / 2 : py;
+        ai.err = (Math.random() * 2 - 1) * cfg.err;
+      } else ai.err = 0;
+      ai.target = target + ai.err;
+    }
+    const d = ai.target - (p.y + PHp(p) / 2), max = CONFIG.paddleSpeed * cfg.speed * dt;
+    if (Math.abs(d) > 3) p.y += Math.max(-max, Math.min(max, d));
+  }
+
+  // ================= UPDATE =================
+  function movePaddle(p, dt) {
+    if (prefs.mode === 'cpu' && p === p2) aiMove(p, dt);
+    else if (isHost() && p === p2) { if (net.remoteY != null) p.y += (net.remoteY - p.y) * Math.min(1, dt * 20); }
+    else {
+      const speed = CONFIG.paddleSpeed * prefs.sens[singleControl() ? 'p1' : p.key] / 100;
+      if (p.touchY !== null) {
+        const target = p.touchY - PHp(p) / 2, maxStep = speed * 1.6 * dt;
+        p.y += Math.max(-maxStep, Math.min(maxStep, target - p.y));
+      } else {
+        const dir = Math.max(-1, Math.min(1, keyDir(p) + padAxis[p.key]));
+        p.y += dir * speed * dt;
+      }
+    }
+    p.y = Math.max(0, Math.min(H - PHp(p), p.y));
+  }
+
+  function hitPaddle(p, isLeft, b) {
+    const s = BS(), ph = PHp(p);
+    if (b.x < p.x + PW() && b.x + s > p.x && b.y < p.y + ph && b.y + s > p.y) {
+      if ((isLeft && b.vx >= 0) || (!isLeft && b.vx <= 0)) return;
+      const rel = ((b.y + s / 2) - (p.y + ph / 2)) / (ph / 2);
+      const angle = Math.max(-1, Math.min(1, rel)) * CONFIG.maxBounceAngle;
+      b.speed = Math.min(b.speed * SPEEDUP[prefs.speedUp], Math.max(maxSpeed(), b.speed));
+      b.vx = Math.cos(angle) * b.speed * (isLeft ? 1 : -1);
+      b.vy = Math.sin(angle) * b.speed;
+      b.x = isLeft ? p.x + PW() : p.x - s;
+      b.last = p;
+      fx(isLeft ? 'h1' : 'h2');
+      if (p.key === localKey() || prefs.mode === 'local') haptic('light');
+      match.rally++;
+      if (p === p2 && prefs.mode === 'cpu') match.cpuReturns++;
+      if (match.rally > stats.longestRally) stats.longestRally = match.rally;
+      if (match.rally === 20) unlock('rally20');
+      if (match.rally === 50) unlock('rally50');
+      if (b.speed > stats.topSpeed) stats.topSpeed = b.speed;
+      if (SPEEDUP[prefs.speedUp] > 1 && b.speed >= maxSpeed() - 0.5) unlock('speed');
+    }
+  }
+
+  const PU_KINDS = ['big', 'multi', 'slow'];
+  const PU_COL = { big: '#7cfc00', multi: '#ff6bd6', slow: '#6bb8ff' };
+  function collectPowerup(b) {
+    const who = b.last, kind = pu.kind;
+    pu = null; puTimer = 8 + Math.random() * 6;
+    if (kind === 'big') { who.big = 8; toast(t('Bigger paddle!')); }
+    else if (kind === 'multi') {
+      if (balls.length < 3) balls.push({ x: b.x, y: b.y, vx: b.vx, vy: -b.vy || 200, speed: b.speed, trail: [], last: b.last });
+      toast(t('Multi-ball!'));
+    } else { slowT = 5; toast(t('Slow motion!')); }
+    fx('u');
+    stats.powerups++; if (stats.powerups >= 5) unlock('collector');
+  }
+
+  function update(dt) {
+    if (flash > 0) flash -= dt;
+    if (state === STATE.INTRO) {
+      introT += realDt;                     // real time, so slow devices don't get a longer intro
+      if (introT >= INTRO_MENU_AT) showMenuAfterIntro();
+      if (introT >= INTRO_LEN) endIntro();
+      return;
+    }
+    if (pu) pu.t += dt;
+    if (isGuest()) {                        // the host runs the game; the guest moves its paddle and shows the host's state
+      if (live()) movePaddle(p2, dt);
+      if (net.st && state === STATE.PLAY) {
+        const age = Math.min(0.12, (performance.now() - net.stAt) / 1000) * (slowT > 0 ? 0.55 : 1);
+        net.st.b.slice(0, balls.length).forEach((a, i) => {
+          const b = balls[i]; b.x = a[0] + a[2] * age; b.y = Math.max(0, Math.min(H - BS(), a[1] + a[3] * age));
+          if (prefs.visual.trail > 0) { b.trail.push({ x: b.x, y: b.y }); while (b.trail.length > prefs.visual.trail) b.trail.shift(); }
+        });
+      }
+      return;
+    }
+    if (state === STATE.COUNTDOWN) {        // paddles can move into position; the ball waits
+      movePaddle(p1, dt); movePaddle(p2, dt);
+      countdownT -= realDt;
+      const n = Math.ceil(countdownT);
+      if (n > 0 && n !== cdShown) { cdShown = n; fx('c'); }
+      if (countdownT <= 0) { state = pausedFrom || STATE.PLAY; fx('g'); }
+      return;
+    }
+    if (state !== STATE.PLAY && state !== STATE.SERVE) return;
+    movePaddle(p1, dt);
+    movePaddle(p2, dt);
+    p1.big = Math.max(0, p1.big - dt); p2.big = Math.max(0, p2.big - dt);
+    if (state === STATE.SERVE) {
+      serveTimer -= dt;
+      if (serveTimer <= 0) {
+        if (needsTap() && !serveReq) waitingServe = true;
+        else launchBall();
+      }
+      return;
+    }
+    if (slowT > 0) slowT -= dt;
+    if (prefs.powerups && !pu) {
+      puTimer -= dt;
+      if (puTimer <= 0) pu = { x: W * (0.35 + Math.random() * 0.3), y: 80 + Math.random() * (H - 160), kind: PU_KINDS[Math.floor(Math.random() * 3)], t: 0 };
+    }
+
+    // sub-step so fast balls can't tunnel through paddles
+    const bdt = dt * (slowT > 0 ? 0.55 : 1);
+    const minDim = Math.min(PW(), BS());
+    for (const b of balls.slice()) {
+      const steps = Math.ceil(Math.max(Math.abs(b.vx), Math.abs(b.vy)) * bdt / (minDim * 0.8)) || 1;
+      const sdt = bdt / steps;
+      for (let i = 0; i < steps; i++) {
+        b.x += b.vx * sdt; b.y += b.vy * sdt;
+        if (b.y <= 0) { b.y = 0; b.vy = Math.abs(b.vy); fx('w'); }
+        if (b.y + BS() >= H) { b.y = H - BS(); b.vy = -Math.abs(b.vy); fx('w'); }
+        hitPaddle(p1, true, b); hitPaddle(p2, false, b);
+        if (shieldUp() && b.vx > 0 && b.x + BS() > p2.x) {      // Hardcore shield: the computer always gets there in time
+          p2.y = Math.max(0, Math.min(H - PHp(p2), b.y + BS() / 2 - PHp(p2) / 2));
+          hitPaddle(p2, false, b);
+        }
+        if (pu && b.last && Math.hypot(b.x + BS() / 2 - pu.x, b.y + BS() / 2 - pu.y) < 20 + BS() / 2) collectPowerup(b);
+        if (b.x + BS() < 0) { point(p2); return; }
+        if (b.x > W) { point(p1); return; }
+      }
+      if (prefs.visual.trail > 0) {
+        b.trail.push({ x: b.x, y: b.y });
+        while (b.trail.length > prefs.visual.trail) b.trail.shift();
+      }
+    }
+  }
+
+  // ================= RENDER =================
+  function drawBall(x, y, size) {
+    if (prefs.visual.ballShape === 'round') { ctx.beginPath(); ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2); ctx.fill(); }
+    else ctx.fillRect(x, y, size, size);
+  }
+
+  function drawBackground() {
+    const c = prefs.colors, v = prefs.visual;
+    ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+    ctx.fillStyle = c.bg; ctx.fillRect(0, 0, W, H);
+    if (bgImg) {
+      const iw = bgImg.naturalWidth || bgImg.width, ih = bgImg.naturalHeight || bgImg.height;
+      const k = Math.max(W / iw, H / ih), dw = iw * k, dh = ih * k;
+      ctx.drawImage(bgImg, (W - dw) / 2, (H - dh) / 2, dw, dh);
+      ctx.globalAlpha = v.bgDim / 100; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
+    }
+    if (flash > 0 && v.flash) { ctx.globalAlpha = 0.07; ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
+  }
+  function drawNet(c, v) {
+    ctx.fillStyle = c.net;
+    if (v.net === 'dashed') for (let y = 8; y < H; y += 28) ctx.fillRect(W / 2 - 2, y, 4, 16);
+    else if (v.net === 'dotted') for (let y = 6; y < H; y += 18) { ctx.beginPath(); ctx.arc(W / 2, y + 3, 3, 0, Math.PI * 2); ctx.fill(); }
+    else if (v.net === 'solid') ctx.fillRect(W / 2 - 1.5, 0, 3, H);
+  }
+  function drawPowerup(v) {
+    const col = PU_COL[pu.kind], r = 18 + Math.sin(pu.t * 6) * 2, x = pu.x, y = pu.y;
+    ctx.shadowBlur = v.glow ? 20 : 0; ctx.shadowColor = col; ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke();
+    if (pu.kind === 'big') { ctx.fillRect(x - 3, y - 10, 6, 20); }
+    else if (pu.kind === 'multi') { ctx.fillRect(x - 9, y - 4, 7, 7); ctx.fillRect(x + 2, y - 4, 7, 7); }
+    else { ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - 6); ctx.moveTo(x, y); ctx.lineTo(x + 5, y); ctx.lineWidth = 2; ctx.stroke(); }
+    ctx.shadowBlur = 0;
+  }
+
+  const clamp01 = x => Math.max(0, Math.min(1, x));
+  const easeOutBack = x => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+  const easeOutBounce = x => { const n = 7.5625, d = 2.75;
+    if (x < 1 / d) return n * x * x; if (x < 2 / d) return n * (x -= 1.5 / d) * x + 0.75;
+    if (x < 2.5 / d) return n * (x -= 2.25 / d) * x + 0.9375; return n * (x -= 2.625 / d) * x + 0.984375; };
+
+  // Start-up animation: court fades in, centre line grows, paddles slide in, title letters drop, ball pops
+  function drawIntro() {
+    const c = prefs.colors, v = prefs.visual, tt = introT;
+    drawBackground();
+    const g = clamp01((tt - 0.15) / 0.6), half = H / 2 * g;
+    ctx.save(); ctx.beginPath(); ctx.rect(0, H / 2 - half, W, half * 2); ctx.clip();
+    drawNet(c, v);
+    ctx.restore();
+    const pk = easeOutBack(clamp01((tt - 0.3) / 0.7));
+    ctx.shadowBlur = v.glow ? 16 : 0;
+    ctx.shadowColor = c.p1; ctx.fillStyle = c.p1; ctx.fillRect(-PW() - 30 + (p1.x + PW() + 30) * pk, p1.y, PW(), PH());
+    ctx.shadowColor = c.p2; ctx.fillStyle = c.p2; ctx.fillRect(W + 30 - (W + 30 - p2.x) * pk, p2.y, PW(), PH());
+    const letters = [...CONFIG.title], size = Math.min(150, (W * 0.8) / Math.max(1, letters.length) / 0.75);
+    ctx.font = `bold ${size}px ui-monospace, Menlo, Consolas, monospace`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const step = size * 0.78, x0 = W / 2 - step * (letters.length - 1) / 2;
+    const fadeOut = 1 - clamp01((tt - INTRO_MENU_AT) / (INTRO_LEN - INTRO_MENU_AT));
+    letters.forEach((ch, i) => {
+      const lt = clamp01((tt - 0.6 - i * 0.12) / 0.55);
+      if (lt <= 0) return;
+      const y = -size + (H * 0.42 + size) * easeOutBounce(lt);
+      const col = i % 2 ? c.p2 : c.p1;
+      ctx.globalAlpha = fadeOut; ctx.shadowBlur = v.glow ? 24 : 0; ctx.shadowColor = col;
+      ctx.fillStyle = '#ffffff'; ctx.fillText(ch, x0 + i * step, y);
+    });
+    const bt = clamp01((tt - 1.35) / 0.35);
+    if (bt > 0) {
+      const sz = BS() * easeOutBack(bt);
+      ctx.globalAlpha = fadeOut; ctx.shadowBlur = v.glow ? 18 : 0; ctx.shadowColor = c.ball; ctx.fillStyle = c.ball;
+      drawBall(W / 2 - sz / 2, H * 0.66 - sz / 2, sz);
+    }
+    ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+    const fin = 1 - clamp01(tt / 0.45);
+    if (fin > 0) { ctx.globalAlpha = fin; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
+  }
+
+  function draw() {
+    const c = prefs.colors, v = prefs.visual;
+    if (state === STATE.INTRO) { drawIntro(); return; }
+    drawBackground();
+    drawNet(c, v);
+
+    // scores
+    ctx.font = `bold ${v.scoreSize}px ui-monospace, Menlo, Consolas, monospace`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.globalAlpha = 0.9;
+    ctx.fillStyle = c.p1; ctx.fillText(p1.score, W / 4, 24);
+    ctx.fillStyle = c.p2; ctx.fillText(p2.score, W * 3 / 4, 24);
+    ctx.globalAlpha = 1;
+
+    if (pu) drawPowerup(v);
+
+    // paddles
+    ctx.shadowBlur = v.glow ? 16 : 0;
+    ctx.shadowColor = c.p1; ctx.fillStyle = c.p1; ctx.fillRect(p1.x, p1.y, PW(), PHp(p1));
+    ctx.shadowColor = c.p2; ctx.fillStyle = c.p2; ctx.fillRect(p2.x, p2.y, PW(), PHp(p2));
+
+    // balls (also shown while settings are open, as a live preview)
+    if (state !== STATE.MENU || modal) {
+      const blinkOff = state === STATE.SERVE && !waitingServe && Math.floor(serveTimer * 6) % 2 === 1;
+      balls.forEach((b, bi) => {
+        ctx.shadowBlur = 0; ctx.fillStyle = c.ball;
+        b.trail.forEach((tp, i) => { ctx.globalAlpha = (i + 1) / b.trail.length * 0.25; drawBall(tp.x, tp.y, BS()); });
+        ctx.globalAlpha = 1;
+        ctx.shadowBlur = v.glow ? 18 : 0; ctx.shadowColor = c.ball;
+        const bx = state === STATE.MENU ? W / 2 - BS() / 2 : b.x, by = state === STATE.MENU ? H / 2 - BS() / 2 : b.y;
+        if (!(blinkOff && bi === 0)) drawBall(bx, by, BS());
+      });
+    }
+    ctx.shadowBlur = 0;
+
+    ctx.textAlign = 'center';
+    if (waitingServe && state === STATE.SERVE) {
+      ctx.font = '18px ui-monospace, Menlo, Consolas, monospace'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = c.ball; ctx.globalAlpha = 0.85;
+      ctx.fillText(isTouch() ? t('Tap to serve') : t('Tap or press SPACE to serve'), W / 2, H / 2 + 40);
+      ctx.globalAlpha = 1;
+    }
+    if (state === STATE.COUNTDOWN && countdownT > 0) {
+      const n = Math.ceil(countdownT), frac = n - countdownT;         // 0 → 1 within each second
+      ctx.globalAlpha = 0.35; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
+      ctx.save(); ctx.translate(W / 2, H / 2); const k = 1.25 - 0.25 * Math.min(1, frac * 3); ctx.scale(k, k);
+      ctx.font = 'bold 170px ui-monospace, Menlo, Consolas, monospace'; ctx.textBaseline = 'middle';
+      ctx.globalAlpha = 1 - Math.max(0, frac - 0.75) * 2.5;
+      ctx.shadowBlur = v.glow ? 30 : 0; ctx.shadowColor = n % 2 ? c.p1 : c.p2; ctx.fillStyle = '#ffffff';
+      ctx.fillText(String(n), 0, 6); ctx.restore(); ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+    }
+    if (prefs.mode === 'cpu' && prefs.cpu === 'hardcore' && (live() || state === STATE.PAUSED)) {
+      const left = HARDCORE_RETURNS - match.cpuReturns;
+      ctx.textBaseline = 'top';
+      if (left > 0) {
+        ctx.font = 'bold 15px ui-monospace, Menlo, Consolas, monospace';
+        ctx.fillStyle = c.p2; ctx.globalAlpha = 0.9;
+        ctx.fillText('🛡 ' + t('SHIELD UP: {n} RETURNS LEFT', { n: left }), W * 3 / 4, 110);
+      } else {                              // shield down: glowing red, always (even with Glow off), so it can't be missed
+        ctx.font = 'bold 20px ui-monospace, Menlo, Consolas, monospace';
+        ctx.fillStyle = '#ff2a2a'; ctx.shadowColor = '#ff0000'; ctx.shadowBlur = 22;
+        const msg = '!!! ' + t('SHIELD DOWN') + ' !!!';
+        ctx.fillText(msg, W * 3 / 4, 106); ctx.fillText(msg, W * 3 / 4, 106);   // drawn twice for a stronger glow
+        ctx.shadowBlur = 0;
+      }
+      ctx.globalAlpha = 1;
+    }
+    if (slowT > 0 && state === STATE.PLAY) {
+      ctx.font = '14px ui-monospace, Menlo, Consolas, monospace'; ctx.textBaseline = 'top';
+      ctx.fillStyle = PU_COL.slow; ctx.fillText(t('SLOW MOTION'), W / 2, 12);
+    }
+    ctx.font = '14px ui-monospace, Menlo, Consolas, monospace';
+    ctx.fillStyle = mix(c.net, c.bg === '#ffffff' ? '#000000' : '#ffffff', 0.25); ctx.textBaseline = 'bottom';
+    const tag = prefs.mode === 'cpu' ? ' · ' + t('COMPUTER: {lvl}', { lvl: t(prefs.cpu[0].toUpperCase() + prefs.cpu.slice(1)).toUpperCase() })
+      : (prefs.mode === 'online' && net.connected ? ' · ' + t('ONLINE') : '');
+    ctx.fillText(`${matchLabel()}${tag}${prefs.muted ? '  ·  ' + t('MUTED') : ''}`, W / 2, H - 10);
+    devHooks.afterDraw();
+  }
+
+  // ================= LOOP =================
+  let last = performance.now(), realDt = 0;
+  function frame(now) {
+    realDt = Math.min((now - last) / 1000, 0.25);
+    const dt = Math.min(realDt, 1 / 30);
+    last = now;
+    pollPads();
+    update(dt); netTick(dt); draw(); devHooks.frame(now);
+    const showPause = live() && !modal;
+    if (pauseBtn.classList.contains('hidden') === showPause) pauseBtn.classList.toggle('hidden', !showPause);
+    requestAnimationFrame(frame);
+  }
+
+
+  // ================= INSTALL OFFER (web build on phones) =================
+  // Opened in a phone browser (not installed): offer to put the game on the home screen.
+  // Android Chrome: real Install button. iPhone: Safari can't be triggered, so show Share → Add to Home Screen.
+  // Inside another web app's window (e.g. the site's own app): explain how to open it in the browser.
+  const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const standalone = () => (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  const installedGame = () => standalone() && /[?&]app=1/.test(location.search);   // the game's own manifest starts at ./?app=1
+  function installable() { return CONFIG.installPrompt && (isTouch() || !!inst.evt) && !window.Capacitor && location.protocol.startsWith('http') && !installedGame(); }
+  function installMode() { return standalone() ? 'other-app' : inst.evt ? 'prompt' : isIOS() ? 'ios' : 'menu'; }
+  function neverAgain() { try { return localStorage.getItem('pong.install.never') === '1'; } catch (e) { return false; } }   // ticked "Never show again" on this device
+  if (CONFIG.installPrompt) {
+    window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); inst.evt = e; if (overlayKind === 'menu') { showOverlay('menu'); maybeOfferInstall(); } });
+    window.addEventListener('appinstalled', () => { inst.evt = null; if (inst.btn) inst.btn.classList.add('hidden'); toast(t('Installed ✓')); });
+    inst.btn = document.createElement('button');
+    inst.btn.id = 'installBtn'; inst.btn.className = 'hidden'; inst.btn.textContent = '⬇ ' + t('Install app');
+    inst.btn.addEventListener('click', ev => { ev.stopPropagation(); openInstall(); });
+    document.getElementById('menuBtns').appendChild(inst.btn);
+    inst.el = document.createElement('div');
+    inst.el.id = 'install'; inst.el.className = 'modal hidden';
+    inst.el.setAttribute('role', 'dialog'); inst.el.setAttribute('aria-modal', 'true');
+    inst.el.innerHTML = `<div class="panel"><h2 id="installTitle"></h2><p class="sub" id="installText"></p><p class="sub" id="installHow"></p>
+      <label class="installNever"><input type="checkbox" id="installNever"> <span id="installNeverText"></span></label>
+      <div class="row"><button id="installLater"></button><span id="installRight"></span></div></div>`;
+    document.body.appendChild(inst.el);
+    inst.el.querySelector('#installLater').addEventListener('click', () => closeInstall());
+  }
+  function maybeOfferInstall() {
+    const asked = /[?&]install=1/.test(location.search);              // opened from a "Download" button: always show it
+    if (inst.shown || !installable() || (neverAgain() && !asked) || modal || state !== STATE.MENU) return;   // every time the game opens
+    inst.shown = true; openInstall();
+  }
+  function openInstall() {
+    if (!inst.el) return;
+    const name = document.title || CONFIG.title, mode = installMode(), right = inst.el.querySelector('#installRight');
+    inst.el.querySelector('#installTitle').textContent = t('Get the app');
+    inst.el.querySelector('#installText').textContent = t('Add {name} to your home screen to play full screen and offline.', { name });
+    inst.el.querySelector('#installLater').textContent = t('Not now');
+    inst.el.querySelector('#installNeverText').textContent = t('Never show again');
+    inst.el.querySelector('#installNever').checked = neverAgain();
+    const how = inst.el.querySelector('#installHow'); right.innerHTML = '';
+    const btn = (label, fn) => { const b = document.createElement('button'); b.className = 'primary'; b.textContent = label; b.addEventListener('click', fn); right.appendChild(b); };
+    if (mode === 'prompt') {
+      how.textContent = '';
+      btn('⬇ ' + t('Install'), async () => {
+        const e = inst.evt; inst.evt = null; closeInstall();
+        try { await e.prompt(); await e.userChoice; } catch (err) { /* dismissed */ }
+      });
+    } else if (mode === 'ios') {
+      how.textContent = t('In Safari, tap Share ⬆ at the bottom of the screen, then "Add to Home Screen".');
+      btn(t('Got it'), () => closeInstall());
+    } else if (mode === 'other-app') {
+      how.textContent = t('To install, open this page in your browser (Safari on iPhone, Chrome on Android), then choose "Add to Home Screen" or "Install app".');
+      btn(t('Copy link'), async () => {
+        const url = location.href.split('#')[0].replace(/[?&](app|install)=1/g, '');
+        try { await navigator.clipboard.writeText(url); toast(t('Link copied')); } catch (err) { toast(url); }
+      });
+    } else {
+      how.textContent = t('In your browser menu ⋮, choose "Install app" or "Add to Home screen".');
+      btn(t('Got it'), () => closeInstall());
+    }
+    openModal('install');
+  }
+  function closeInstall() {
+    const never = inst.el.querySelector('#installNever').checked;
+    try { if (never) localStorage.setItem('pong.install.never', '1'); else localStorage.removeItem('pong.install.never'); } catch (e) { /* */ }
+    if (modal === 'install') closeModal();
+    showOverlay(overlayKind || 'menu');
+  }
+
+  if (document.title === 'PONG – 2 Player' && CONFIG.title !== 'PONG') document.title = CONFIG.title;   // keep a custom <title> if set
+  applyStaticText();
+  gearBtn.setAttribute('aria-label', t('Settings')); gearBtn.title = t('Settings');
+  document.getElementById('helpBtn').setAttribute('aria-label', t('How to play')); document.getElementById('helpBtn').title = t('How to play');
+  pauseBtn.setAttribute('aria-label', t('PAUSED'));
+  document.getElementById('modesPlay').textContent = '▶ ' + t('Play');
+  applyVisuals();
+  updateWarnings();
+  if (prefs.visual.intro && !reduceMotion) {
+    state = STATE.INTRO; overlay.classList.add('hidden'); gearBtn.classList.add('hidden');
+  } else {
+    introMenuShown = true; showOverlay('menu');
+  }
+  requestAnimationFrame(frame);
+
+  if (CONFIG.serviceWorker && 'serviceWorker' in navigator && location.protocol.startsWith('http') && window.isSecureContext && !window.Capacitor) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+
+
+
+})();
+</script>
+</body>
+</html>
