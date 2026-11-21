@@ -158,6 +158,8 @@
   #installBtn { font-size: 15px !important; padding: 8px 16px !important; border-style: dashed; }
   .installNever { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 14px; color: var(--dim); cursor: pointer; }
   .installNever input { width: 18px; height: 18px; accent-color: var(--accent); }
+  #ver { position: fixed; right: calc(6px + env(safe-area-inset-right)); bottom: calc(4px + env(safe-area-inset-bottom)); z-index: 4;
+    font-size: 9px; line-height: 1; color: var(--fg); opacity: .3; pointer-events: none; user-select: none; }
   #backLink { position: fixed; top: calc(12px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left)); z-index: 5;
     font-size: 15px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: rgba(17,24,33,.8);
     color: var(--fg); text-decoration: none; }
@@ -184,6 +186,7 @@
   </div>
 </div>
 <div id="toast" role="status" aria-live="polite"></div>
+<div id="ver" aria-hidden="true"></div>
 
 <!-- First-run colour picker (with a short how-to-play) -->
 <div id="picker" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="pickerTitle">
@@ -314,6 +317,7 @@
   // ================= CONFIG (the skill customises these) =================
   const CONFIG = {
     title: 'PADDLE DUEL',                     // shown on the menu, intro and browser tab
+    version: 'v1',                     // tiny label in the bottom-right corner; raise it with each release
     width: 960, height: 600,           // logical playfield; canvas scales to fit
     paddleMargin: 28,
     paddleSpeed: 560,                  // px/s at 1.00× sensitivity
@@ -2003,6 +2007,7 @@
 
   if (document.title === 'PONG – 2 Player' && CONFIG.title !== 'PONG') document.title = CONFIG.title;   // keep a custom <title> if set
   applyStaticText();
+  document.getElementById('ver').textContent = CONFIG.version || '';
   gearBtn.setAttribute('aria-label', t('Settings')); gearBtn.title = t('Settings');
   document.getElementById('helpBtn').setAttribute('aria-label', t('How to play')); document.getElementById('helpBtn').title = t('How to play');
   pauseBtn.setAttribute('aria-label', t('PAUSED'));
